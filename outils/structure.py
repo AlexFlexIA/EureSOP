@@ -43,7 +43,7 @@ PARAM = {
    ("Code produit", T, "Texte"), ("Entite", T, ""), ("Libelle produit", T, ""),
    ("Niv1", T, ""), ("Niv2", T, ""), ("Niv3", T, ""), ("Niv4", T, ""), ("Famille", T, ""), ("Groupe", T, ""),
    ("Marche", T, ""), ("Sous marche", T, ""), ("Segment", T, "PERF, REF, ACC, FLA conservés tels quels"),
-   ("Unite stock", T, "U, KG, L, SAC..."), ("Poids article", D, "Poids ou volume d'une unité de stock, en kg ou L"),
+   ("Unite stock", T, "U, KG, L, SAC..."), ("Unites par palette", D, "Pour convertir en palettes si la capacité est en palettes"), ("Poids article", D, "Poids ou volume d'une unité de stock, en kg ou L"),
    ("Source poids", T, "Poids de réf, Poids brut, Poids unitaire : règle de priorité à fixer"), ("Unite poids", "LISTE", "KG | L"), ("Densite", D, "Pour convertir L en kg ; vide si KG"),
    ("Dose ha", D, "Reprise EurePrev"), ("Coefficient", D, "Reprise EurePrev"), ("Mode conversion", "LISTE", "DOSE_MULTIPLICATEUR | DOSE_DIVISEUR | SANS_SURFACE"),
    ("Date fin de vie", DT, "Vide si actif"), ("Actif", B, ""), ("Commentaire", T, "")]),
@@ -58,10 +58,18 @@ PARAM = {
    ("Date effet", DT, ""), ("Date fin", DT, "Vide si sans fin"),
    ("Taux de report", D, "% des ventes de l'ancien reportées sur le nouveau, 100 par défaut"),
    ("Renseigne par", T, ""), ("Valide par", T, ""), ("Actif", B, ""), ("Commentaire", T, "Ex. arrêt Minarix, report flufénacet")]),
- "PLATEFORMES": ("Lieux de stockage. Un dépôt peut dépendre d'une plateforme (GLOMEL vers dépôts).", [
+ "PLATEFORMES": ("Lieux de stockage. Un dépôt peut dépendre d'une plateforme (GLOMEL vers dépôts). Les capacités sont dans CAPACITES.", [
    ("Plateforme", T, "Code, ex. GLOMEL"), ("Libelle", T, ""),
    ("Type", "LISTE", "PLATEFORME | DEPOT | DEPOT_DEBORD"), ("Plateforme parente", T, "Alimente ce dépôt"),
-   ("Entite", T, ""), ("Capacite T", D, "Saturation"), ("Stock mini T", D, ""), ("Stock maxi T", D, ""), ("Actif", B, "")]),
+   ("Entite", T, ""), ("Actif", B, "")]),
+ "CAPACITES": ("Capacités par plateforme, avec ou sans détail par famille. Plusieurs lignes possibles par plateforme et par période.", [
+   ("Plateforme", T, ""), ("Niveau", "LISTE", "PLATEFORME | GROUPE | FAMILLE | MARCHE"),
+   ("Cle niveau", T, "* pour le total de la plateforme, sinon le groupe, la famille ou le marché"),
+   ("Type capacite", "LISTE", "STOCKAGE | RECEPTION_HEBDO | EXPEDITION_HEBDO"),
+   ("Unite", "LISTE", "T | PALETTES | M3"), ("Capacite", D, "Valeur maximale dans l'unité"),
+   ("Seuil alerte pourcent", D, "Alerte au-delà de ce taux, ex. 90"),
+   ("Debut validite", DT, "Vide = toujours. Permet une capacité saisonnière"), ("Fin validite", DT, ""),
+   ("Commentaire", T, "Ex. stockage séparé des produits dangereux")]),
  "AFFECTATION_PLATEFORME": ("Quelle plateforme sert quel bassin. Reprise de l'onglet PLATEFORMES d'EurePrev.", [
    ("Entite", T, ""), ("Territoire TC", T, ""), ("Bassin TC", T, ""), ("Plateforme", T, "Plateforme rattachée"), ("Km", D, "Distance bassin vers cette plateforme"),
    ("Validation", "LISTE", "A_VALIDER | VALIDE"), ("Source", T, "")]),
@@ -88,6 +96,7 @@ PARAM = {
    ("Code fournisseur", T, ""), ("Libelle fournisseur", T, ""), ("Marche", T, ""), ("Code produit", T, "Vide = tout le marché"),
    ("Plateforme", T, "* = toutes"), ("Lead time semaines", E, ""), ("Mini commande T", D, ""),
    ("Multiple commande T", D, "Ex. camion complet"), ("Palier remise T", D, ""),
+   ("Avance max semaines", E, "De combien on peut avancer une livraison pour respecter une capacité"), ("Retard max semaines", E, "De combien on peut la retarder sans risque de rupture"),
    ("Debut validite", DT, ""), ("Fin validite", DT, ""), ("Commentaire", T, "")]),
  "ROUTES_APPRO": ("D'où vient le stock d'un article sur une plateforme : fournisseur ou transfert depuis une autre plateforme.", [
    ("Plateforme", T, "Destination"), ("Code produit", T, "Vide = tout le marché"), ("Marche", T, ""),
@@ -97,7 +106,7 @@ PARAM = {
    ("Plateforme", T, ""), ("Code produit", T, ""), ("Stock mini", D, "Unité de stock"), ("Stock cible", D, ""),
    ("Lot reappro", D, "Taille de lot ou palier d'achat"), ("Actif", B, "")]),
  "SEUILS_ALERTES": ("Alertes automatiques.", [
-   ("Code alerte", "LISTE", "ECART_N1 | RUPTURE_PREVUE | SURSTOCK_PREVU | ECART_PREVISION | COUVERTURE_BASSE"),
+   ("Code alerte", "LISTE", "ECART_N1 | RUPTURE_PREVUE | SURSTOCK_PREVU | SATURATION_PREVUE | ECART_PREVISION | COUVERTURE_BASSE"),
    ("Libelle", T, ""), ("Seuil", D, ""), ("Unite seuil", T, "%, mois, T"),
    ("Perimetre", T, "Marché, plateforme ou * "), ("Role destinataire", T, ""), ("Actif", B, "")]),
  "SOURCES": ("Fichiers d'entrée alimentés par ailleurs. Une ligne par flux.", [
@@ -187,6 +196,20 @@ SORTIE = {
    ("Taux report", D, "% des ventes non réalisées qui reviennent ou passent au substitut"),
    ("Semaine retour", T, "Semaine où les ventes reportées reviennent"), ("Code produit substitut", T, "Si SUBSTITUEES"),
    ("Statut", "LISTE", "ACTIVE | CLOTUREE | ANNULEE"), ("Commentaire", T, ""), ("Cree par", T, ""), ("Cree le", DT, "")]),
+ "PLAN_APPRO": ("Commandes proposées, cadencées pour respecter minimums, multiples, délais et capacités. Chaque ligne dit quelles contraintes ont joué.", [
+   ("ID ligne appro", T, ""), ("ID version", T, ""), ("Scenario", T, ""), ("Plateforme", T, ""), ("Code produit", T, ""),
+   ("Code fournisseur", T, ""), ("Semaine besoin", T, "Semaine où le stock passerait sous le mini"),
+   ("Semaine commande", T, "AAAA-Sss"), ("Semaine livraison", T, "AAAA-Sss"),
+   ("Quantite besoin brut", D, "Unité de stock, avant contraintes"), ("Quantite proposee", D, "Après contraintes"),
+   ("Unite stock", T, ""), ("Contraintes appliquees", T, "MIN_COMMANDE | MULTIPLE | LEAD_TIME | CAPACITE_RECEPTION | CAPACITE_STOCKAGE | PALIER_REMISE"),
+   ("Ecart semaines", E, "Livraison moins besoin. Négatif = avancée"),
+   ("Statut", "LISTE", "PROPOSEE | VALIDEE | PASSEE | ANNULEE"), ("Valide par", T, ""), ("Valide le", DT, ""), ("Commentaire", T, "")]),
+ "OCCUPATION_PROJETEE": ("Charge projetée face aux capacités, par semaine, plateforme et famille.", [
+   ("ID version", T, ""), ("Scenario", T, ""), ("Semaine", T, "AAAA-Sss"), ("Plateforme", T, ""),
+   ("Niveau", "LISTE", "PLATEFORME | GROUPE | FAMILLE | MARCHE"), ("Cle niveau", T, ""),
+   ("Type capacite", "LISTE", "STOCKAGE | RECEPTION_HEBDO | EXPEDITION_HEBDO"), ("Unite", T, ""),
+   ("Charge", D, "Stock projeté ou flux de la semaine"), ("Capacite", D, ""), ("Taux pourcent", D, ""),
+   ("Alerte", "LISTE", "AUCUNE | SEUIL | SATURATION")]),
  "ALERTES": ("Alertes générées par l'application.", [
    ("ID alerte", T, ""), ("Date", DT, ""), ("Code alerte", T, "Voir SEUILS_ALERTES"), ("Cle", T, "Marché, article ou plateforme concerné"),
    ("Valeur", D, ""), ("Seuil", D, ""), ("Statut", "LISTE", "OUVERTE | ACQUITTEE"), ("Acquittee par", T, ""), ("Acquittee le", DT, "")]),
@@ -205,6 +228,11 @@ SORTIE = {
    ("Code produit", T, ""), ("Entite", T, ""), ("Plateforme", T, ""), ("Mois", T, "AAAA-MM"),
    ("Quantite demande", D, "Unité de stock, comme si l'article était disponible"), ("Quantite reelle", D, "Après ruptures déclarées. Égale à la demande sans rupture"),
    ("Unite stock", T, ""), ("Tonnes demande", D, "Quantité × poids article"), ("Tonnes reelle", D, "")]),
+ "PUBLICATION_APPRO": ("Contrat de sortie. Commandes proposées ou validées, lues par l'ordonnancement et les achats.", [
+   ("ID campagne", T, ""), ("Version contrat", T, ""), ("ID version", T, ""), ("Scenario", T, ""), ("Date validation", DT, ""),
+   ("Plateforme", T, ""), ("Code produit", T, ""), ("Code fournisseur", T, ""),
+   ("Semaine commande", T, ""), ("Semaine livraison", T, ""), ("Quantite", D, "Unité de stock"), ("Unite stock", T, ""), ("Tonnes", D, ""),
+   ("Statut", "LISTE", "PROPOSEE | VALIDEE | PASSEE")]),
  "PUBLICATION_HEBDO": ("Contrat de sortie. Prévision hebdomadaire sur l'horizon du suivi de stock (HORIZON_HEBDO_SEMAINES, 78 par défaut), pour l'ordonnancement.", [
    ("ID campagne", T, ""), ("Version contrat", T, ""), ("ID version", T, ""), ("Scenario", T, ""), ("Date validation", DT, ""),
    ("Code produit", T, ""), ("Entite", T, ""), ("Plateforme", T, ""), ("Semaine", T, "AAAA-Sss"),

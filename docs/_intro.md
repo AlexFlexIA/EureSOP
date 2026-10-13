@@ -89,6 +89,28 @@ Votre suivi actuel (onglet GLOMEL v3) projette, pour chaque article et chaque se
 | REPORT_VENTES | Entrée ou sortie | SUBSTITUTIONS : flufénacet, arrêt Minarix |
 | STOCK_FIN | Calculé | Début + entrées − sorties |
 
+### Capacités et approvisionnement cadencé
+
+Les capacités sont décrites dans `CAPACITES` : par plateforme, et si besoin par famille, groupe ou marché (stockage séparé des produits dangereux, par exemple). Trois types de capacité :
+
+| Type | Ce qu'il limite |
+|---|---|
+| STOCKAGE | Le stock présent en même temps sur la plateforme (ou la famille) |
+| RECEPTION_HEBDO | Ce qui peut être reçu en une semaine |
+| EXPEDITION_HEBDO | Ce qui peut être sorti en une semaine |
+
+L'unité est la tonne, la palette ou le m³. Pour convertir en palettes, `PRODUITS` porte « Unités par palette ». Une capacité peut changer selon la saison (début et fin de validité). Les limites s'additionnent : la plateforme et chacune de ses familles doivent toutes être respectées.
+
+L'application calcule les commandes en plusieurs passes, article par article puis plateforme par plateforme :
+
+1. **Besoin brut** : la semaine où le stock projeté passerait sous le mini (`PARAMETRES_STOCK`), dans la vue réel.
+2. **Contraintes d'achat** : minimum de commande, multiple (camion complet), palier de remise, délai du fournisseur (`CONTRAINTES_APPRO`). Cela donne la semaine de commande.
+3. **Contrôle des capacités** : charge projetée par semaine, plateforme et famille (`OCCUPATION_PROJETEE`).
+4. **Cadençage** : si une semaine dépasse la capacité de réception ou de stockage, l'application fractionne la livraison, l'avance ou la retarde dans les limites autorisées (« Avance max » et « Retard max » par fournisseur et article). Le stock débord des dépôts compte comme capacité supplémentaire.
+5. **Résultat** : `PLAN_APPRO` garde pour chaque commande la quantité brute, la quantité proposée, le décalage et les contraintes qui ont joué. Les commandes validées sont publiées aux achats et à l'ordonnancement (`PUBLICATION_APPRO`).
+
+Une saturation prévue qu'aucun décalage autorisé ne résout est signalée par l'alerte SATURATION_PREVUE : c'est une décision à prendre en comité (augmenter la capacité, utiliser un dépôt de débord, décaler une campagne).
+
 ### Ruptures : lire la demande et le réel en parallèle
 
 Une rupture ne supprime pas la demande. L'application garde donc deux lectures de la même prévision :
@@ -127,7 +149,8 @@ Estimation à confirmer avec les vraies données. Hypothèses : 1 500 articles a
 | PUBLICATION_MENSUELLE (tous articles) | 54 000 | 14 | ≈ 0,8 M |
 | PUBLICATION_HEBDO (articles suivis) | 18 700 | 14 | ≈ 0,3 M |
 | STOCKS_PROJETES (version courante) | 170 000 | 10 | ≈ 1,7 M |
-| **Total SORTIE_SOP** | | | **≈ 3,0 M** |
+| PLAN_APPRO, OCCUPATION_PROJETEE | 10 000 | 12 | ≈ 0,1 M |
+| **Total SORTIE_SOP** | | | **≈ 3,1 M** |
 
 Si vous voulez publier **tous** les articles à la semaine (réglage `PUBLICATION_HEBDO_TOUS`), ajoutez environ 5 M de cellules : à décider avec l'ordonnancement.
 
@@ -141,5 +164,6 @@ Le point sensible reste `VENTES_HEBDO` : l'export actuel est à la ligne factur�
 4. **Qui définit les coefficients :** à décider (réponse reportée). L'onglet prévoit `Valide par` et un numéro de version.
 5. **Rôles (validés) :** ADMIN, PREV, RM, AM, RT, CD, RBP, TC, SUPPLY. Le contrôle de gestion et la direction n'ont pas de rôle : ils reçoivent les exports du comité. Reste à confirmer ce que peut corriger chaque rôle.
 6. **Fichier d'ordonnancement :** quand l'application d'ordonnancement existera, ses colonnes de lecture sont à ajouter à `CONTRAT`.
-7. **Droits budget :** par défaut seuls ADMIN et PREV ont `Voir budget` (PROFILS). Accord d'Emmanuel à obtenir pour élargir.
-8. **À clarifier :** date de référence des ventes (commande ou livraison), sens de « PAC/PAL », sens de « HS GLOMEL », unité des quantités du suivi de stock, doublon « Besoin de Réappro » sur COLZOR TRIO 20 L.
+7. **Capacités :** unité (tonnes, palettes, m³), niveau de détail (plateforme seule ou famille) et décalages autorisés par fournisseur à fixer avec le supply.
+8. **Droits budget :** par défaut seuls ADMIN et PREV ont `Voir budget` (PROFILS). Accord d'Emmanuel à obtenir pour élargir.
+9. **À clarifier :** date de référence des ventes (commande ou livraison), sens de « PAC/PAL », sens de « HS GLOMEL », unité des quantités du suivi de stock, doublon « Besoin de Réappro » sur COLZOR TRIO 20 L.
