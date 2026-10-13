@@ -1,1 +1,1 @@
-ID campagne,Version contrat,ID version,Date validation,Code produit,Entite,Plateforme,Semaine,Quantite,Unite stock,Tonnes
+ID campagne,Version contrat,ID version,Scenario,Date validation,Code produit,Entite,Plateforme,Semaine,Quantite demande,Quantite reelle,Unite stock,Tonnes demande,Tonnes reelle

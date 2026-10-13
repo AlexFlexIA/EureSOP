@@ -89,6 +89,27 @@ Votre suivi actuel (onglet GLOMEL v3) projette, pour chaque article et chaque se
 | REPORT_VENTES | Entrée ou sortie | SUBSTITUTIONS : flufénacet, arrêt Minarix |
 | STOCK_FIN | Calculé | Début + entrées − sorties |
 
+### Ruptures : lire la demande et le réel en parallèle
+
+Une rupture ne supprime pas la demande. L'application garde donc deux lectures de la même prévision :
+
+| | Vue DEMANDE | Vue REEL |
+|---|---|---|
+| Question | Que se passerait-il si l'article était disponible ? | Que va-t-il vraiment se passer ? |
+| Ventes | La prévision arbitrée, sans contrainte | Plafonnées par le stock disponible pendant la rupture |
+| Stock | Peut devenir négatif : le négatif est le manque à combler | Plancher à zéro |
+| Ventes non réalisées | Aucune | Affichées en VENTES_PERDUES, ou reportées plus tard, ou transférées à un substitut |
+
+Chaque rupture est déclarée dans l'onglet `RUPTURES` : article, plateforme, semaines de début et de fin, cause, et **traitement des ventes** :
+
+- **PERDUES** : elles disparaissent du réel et restent visibles comme ventes perdues.
+- **REPORTEES** : un taux de ventes revient à une semaine de retour fixée. Le report apparaît en REPORT_VENTES.
+- **SUBSTITUEES** : un taux passe sur un autre article, par le même mécanisme que SUBSTITUTIONS.
+
+Dans le passé, c'est CORRECTIONS_HISTO (type RUPTURE) : la quantité brute est ce qui a été vendu, la quantité corrigée est la demande estimée. Le brut n'est jamais écrasé. Les prévisions statistiques se calculent sur l'historique corrigé.
+
+Une rupture prévue est proposée automatiquement par l'application dès que le stock projeté passe sous zéro (alerte RUPTURE_PREVUE). Le prévisionniste confirme, choisit le traitement, ou rejette. Les deux quantités sont publiées aux autres applications (`Quantite demande`, `Quantite reelle`). La vue DEMANDE du stock n'est stockée que pour les articles qui ont une rupture.
+
 Les lignes « Ventes prévisionnelles ONA » du suivi deviennent une ligne VENTES_PREV avec `Entite = ONA`, pas un mouvement à part.
 
 ## 7. Volumes à surveiller
@@ -557,8 +578,9 @@ Version courante. Une ligne par article, entité, plateforme et mois.
 | Qte TC | DECIMAL |  |
 | Qte evenements | DECIMAL | Polco, promo, réglementaire |
 | Qte correction | DECIMAL |  |
-| Qte arbitree | DECIMAL |  |
+| Qte arbitree | DECIMAL | Demande, comme si l'article était disponible |
 | Qte validee | DECIMAL |  |
+| Qte reelle attendue | DECIMAL | Après ruptures déclarées dans RUPTURES. Vide si aucune |
 | Unite stock | TEXTE |  |
 | Poids article | DECIMAL | Copié du référentiel |
 | Statut | LISTE | PREV_TC | ARBITREE | VALIDEE |
@@ -587,8 +609,9 @@ Corrections de l'historique. Le brut n'est jamais écrasé.
 | Mois debut | TEXTE | AAAA-MM |
 | Mois fin | TEXTE | AAAA-MM |
 | Type | LISTE | RUPTURE | ANOMALIE | EVENEMENT | SUBSTITUTION | APPRO_FOURNISSEUR |
-| Qte brute | DECIMAL |  |
-| Qte corrigee | DECIMAL |  |
+| Qte brute | DECIMAL | Ce qui a été vendu |
+| Qte corrigee | DECIMAL | Demande estimée sans la cause |
+| Methode estimation | LISTE | SEMAINES_COMPARABLES | MOYENNE | MANUELLE |
 | Motif | TEXTE |  |
 | Commentaire | TEXTE |  |
 | Statut | LISTE | ACTIVE | ANNULEE |
@@ -624,10 +647,11 @@ Projection hebdomadaire du stock par article et plateforme, version et scénario
 |---|---|---|
 | ID version | TEXTE |  |
 | Scenario | TEXTE |  |
+| Vue | LISTE | DEMANDE | REEL |
 | Semaine | TEXTE | AAAA-Sss |
 | Plateforme | TEXTE |  |
 | Code produit | TEXTE |  |
-| Mouvement | LISTE | STOCK_DEBUT | ACHATS | BESOIN_REAPPRO | RETOURS_MAGASINS | TRANSFERT_ENTRANT | VENTES_PREV | REPORT_VENTES | STOCK_FIN |
+| Mouvement | LISTE | STOCK_DEBUT | ACHATS | BESOIN_REAPPRO | RETOURS_MAGASINS | TRANSFERT_ENTRANT | VENTES_PREV | VENTES_PERDUES | REPORT_VENTES | STOCK_FIN |
 | Quantite | DECIMAL | Unité de stock |
 | Origine | TEXTE | Ex. plateforme du transfert, article du report, motif |
 | Alerte | LISTE | AUCUNE | RUPTURE | SURSTOCK | SATURATION |
@@ -647,6 +671,28 @@ Projection hebdomadaire du stock par article et plateforme, version et scénario
 | Ecart T | DECIMAL |  |
 | Ecart pourcent | DECIMAL |  |
 | Biais pourcent | DECIMAL | Signé, positif = sur-prévision |
+
+### RUPTURES
+Ruptures constatées ou prévues, et ce que deviennent les ventes. Permet de lire la demande et le réel en parallèle.
+
+| Colonne | Type | Règle ou exemple |
+|---|---|---|
+| ID rupture | TEXTE |  |
+| Code produit | TEXTE |  |
+| Entite | TEXTE |  |
+| Plateforme | TEXTE | * = toutes |
+| Semaine debut | TEXTE | AAAA-Sss |
+| Semaine fin | TEXTE | Vide si en cours |
+| Origine | LISTE | CONSTATEE | PREVUE | PROPOSEE |
+| Cause | LISTE | APPRO_FOURNISSEUR | REGLEMENTAIRE | QUALITE | AUTRE |
+| Traitement ventes | LISTE | PERDUES | REPORTEES | SUBSTITUEES |
+| Taux report | DECIMAL | % des ventes non réalisées qui reviennent ou passent au substitut |
+| Semaine retour | TEXTE | Semaine où les ventes reportées reviennent |
+| Code produit substitut | TEXTE | Si SUBSTITUEES |
+| Statut | LISTE | ACTIVE | CLOTUREE | ANNULEE |
+| Commentaire | TEXTE |  |
+| Cree par | TEXTE |  |
+| Cree le | DATE |  |
 
 ### ALERTES
 Alertes générées par l'application.
@@ -720,14 +766,17 @@ Contrat de sortie. Prévision validée mensuelle, lue par les autres application
 | ID campagne | TEXTE |  |
 | Version contrat | TEXTE |  |
 | ID version | TEXTE |  |
+| Scenario | TEXTE |  |
 | Date validation | DATE |  |
 | Code produit | TEXTE |  |
 | Entite | TEXTE |  |
 | Plateforme | TEXTE |  |
 | Mois | TEXTE | AAAA-MM |
-| Quantite | DECIMAL | Unité de stock |
+| Quantite demande | DECIMAL | Unité de stock, comme si l'article était disponible |
+| Quantite reelle | DECIMAL | Après ruptures déclarées. Égale à la demande sans rupture |
 | Unite stock | TEXTE |  |
-| Tonnes | DECIMAL | Quantité × poids article |
+| Tonnes demande | DECIMAL | Quantité × poids article |
+| Tonnes reelle | DECIMAL |  |
 
 ### PUBLICATION_HEBDO
 Contrat de sortie. Prévision hebdomadaire sur l'horizon du suivi de stock (HORIZON_HEBDO_SEMAINES, 78 par défaut), pour l'ordonnancement.
@@ -737,11 +786,14 @@ Contrat de sortie. Prévision hebdomadaire sur l'horizon du suivi de stock (HORI
 | ID campagne | TEXTE |  |
 | Version contrat | TEXTE |  |
 | ID version | TEXTE |  |
+| Scenario | TEXTE |  |
 | Date validation | DATE |  |
 | Code produit | TEXTE |  |
 | Entite | TEXTE |  |
 | Plateforme | TEXTE |  |
 | Semaine | TEXTE | AAAA-Sss |
-| Quantite | DECIMAL |  |
+| Quantite demande | DECIMAL |  |
+| Quantite reelle | DECIMAL |  |
 | Unite stock | TEXTE |  |
-| Tonnes | DECIMAL |  |
+| Tonnes demande | DECIMAL |  |
+| Tonnes reelle | DECIMAL |  |

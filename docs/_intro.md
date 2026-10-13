@@ -89,6 +89,27 @@ Votre suivi actuel (onglet GLOMEL v3) projette, pour chaque article et chaque se
 | REPORT_VENTES | Entrée ou sortie | SUBSTITUTIONS : flufénacet, arrêt Minarix |
 | STOCK_FIN | Calculé | Début + entrées − sorties |
 
+### Ruptures : lire la demande et le réel en parallèle
+
+Une rupture ne supprime pas la demande. L'application garde donc deux lectures de la même prévision :
+
+| | Vue DEMANDE | Vue REEL |
+|---|---|---|
+| Question | Que se passerait-il si l'article était disponible ? | Que va-t-il vraiment se passer ? |
+| Ventes | La prévision arbitrée, sans contrainte | Plafonnées par le stock disponible pendant la rupture |
+| Stock | Peut devenir négatif : le négatif est le manque à combler | Plancher à zéro |
+| Ventes non réalisées | Aucune | Affichées en VENTES_PERDUES, ou reportées plus tard, ou transférées à un substitut |
+
+Chaque rupture est déclarée dans l'onglet `RUPTURES` : article, plateforme, semaines de début et de fin, cause, et **traitement des ventes** :
+
+- **PERDUES** : elles disparaissent du réel et restent visibles comme ventes perdues.
+- **REPORTEES** : un taux de ventes revient à une semaine de retour fixée. Le report apparaît en REPORT_VENTES.
+- **SUBSTITUEES** : un taux passe sur un autre article, par le même mécanisme que SUBSTITUTIONS.
+
+Dans le passé, c'est CORRECTIONS_HISTO (type RUPTURE) : la quantité brute est ce qui a été vendu, la quantité corrigée est la demande estimée. Le brut n'est jamais écrasé. Les prévisions statistiques se calculent sur l'historique corrigé.
+
+Une rupture prévue est proposée automatiquement par l'application dès que le stock projeté passe sous zéro (alerte RUPTURE_PREVUE). Le prévisionniste confirme, choisit le traitement, ou rejette. Les deux quantités sont publiées aux autres applications (`Quantite demande`, `Quantite reelle`). La vue DEMANDE du stock n'est stockée que pour les articles qui ont une rupture.
+
 Les lignes « Ventes prévisionnelles ONA » du suivi deviennent une ligne VENTES_PREV avec `Entite = ONA`, pas un mouvement à part.
 
 ## 7. Volumes à surveiller

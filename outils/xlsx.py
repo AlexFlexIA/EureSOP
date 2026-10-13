@@ -31,6 +31,7 @@ DEFAUTS = {
    ("Rattachement semaine vers mois","Mois du jeudi","VALIDE_UTILISATEUR"),
    ("Poids article","Lu dans un Google Sheet, lien à fournir","A_COMPLETER"),
    ("Accès au budget","À valider avec Emmanuel","A_COMPLETER"),
+   ("Traitement par défaut des ventes en rupture","Perdues, reportées ou substituées : à décider, modifiable pour chaque rupture","A_COMPLETER"),
    ("Dates des campagnes PAC1 à PAC4 et morte saison","À renseigner","A_COMPLETER"),
    ("Grain hebdomadaire de la prévision","Mois pour le comité, semaine en stockage et publication","A_VALIDER"),
    ("Date de référence des ventes","Date de livraison ou de commande à choisir","A_COMPLETER"),

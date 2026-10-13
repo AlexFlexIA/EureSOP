@@ -142,7 +142,7 @@ SORTIE = {
    ("Code produit", T, ""), ("Entite", T, ""), ("Plateforme", T, ""), ("Mois", T, "AAAA-MM"),
    ("Qte historique corrigee N-1", D, "Unité de stock"), ("Qte statistique", D, ""), ("Tendance retenue", D, "% appliqué à l'historique N-1, choisi par le prévisionniste"),
    ("Qte TC", D, ""), ("Qte evenements", D, "Polco, promo, réglementaire"),
-   ("Qte correction", D, ""), ("Qte arbitree", D, ""), ("Qte validee", D, ""),
+   ("Qte correction", D, ""), ("Qte arbitree", D, "Demande, comme si l'article était disponible"), ("Qte validee", D, ""), ("Qte reelle attendue", D, "Après ruptures déclarées dans RUPTURES. Vide si aucune"),
    ("Unite stock", T, ""), ("Poids article", D, "Copié du référentiel"),
    ("Statut", "LISTE", "PREV_TC | ARBITREE | VALIDEE"), ("Version", T, "ID version courante"),
    ("Modifie par", T, ""), ("Modifie le", DT, "")]),
@@ -152,7 +152,7 @@ SORTIE = {
    ("ID correction", T, ""), ("Code produit", T, ""), ("Entite", T, ""), ("Plateforme", T, "* = toutes"),
    ("Mois debut", T, "AAAA-MM"), ("Mois fin", T, "AAAA-MM"),
    ("Type", "LISTE", "RUPTURE | ANOMALIE | EVENEMENT | SUBSTITUTION | APPRO_FOURNISSEUR"),
-   ("Qte brute", D, ""), ("Qte corrigee", D, ""), ("Motif", T, ""), ("Commentaire", T, ""),
+   ("Qte brute", D, "Ce qui a été vendu"), ("Qte corrigee", D, "Demande estimée sans la cause"), ("Methode estimation", "LISTE", "SEMAINES_COMPARABLES | MOYENNE | MANUELLE"), ("Motif", T, ""), ("Commentaire", T, ""),
    ("Statut", "LISTE", "ACTIVE | ANNULEE"), ("Cree par", T, ""), ("Cree le", DT, ""),
    ("Annule par", T, ""), ("Annule le", DT, "")]),
  "EVENEMENTS_COMMERCE": ("Apports du commerce à la prévision : polco, promotions, grands comptes, appels d'offres, réglementaire.", [
@@ -162,14 +162,22 @@ SORTIE = {
    ("Impact quantite", D, ""), ("Impact pourcent", D, "Un des deux impacts"),
    ("Commentaire", T, ""), ("Saisi par", T, ""), ("Saisi le", DT, ""), ("Actif", B, "")]),
  "STOCKS_PROJETES": ("Projection hebdomadaire du stock par article et plateforme, version et scénario courants. Une ligne par mouvement.", [
-   ("ID version", T, ""), ("Scenario", T, ""), ("Semaine", T, "AAAA-Sss"), ("Plateforme", T, ""), ("Code produit", T, ""),
-   ("Mouvement", "LISTE", "STOCK_DEBUT | ACHATS | BESOIN_REAPPRO | RETOURS_MAGASINS | TRANSFERT_ENTRANT | VENTES_PREV | REPORT_VENTES | STOCK_FIN"),
+   ("ID version", T, ""), ("Scenario", T, ""), ("Vue", "LISTE", "DEMANDE | REEL"), ("Semaine", T, "AAAA-Sss"), ("Plateforme", T, ""), ("Code produit", T, ""),
+   ("Mouvement", "LISTE", "STOCK_DEBUT | ACHATS | BESOIN_REAPPRO | RETOURS_MAGASINS | TRANSFERT_ENTRANT | VENTES_PREV | VENTES_PERDUES | REPORT_VENTES | STOCK_FIN"),
    ("Quantite", D, "Unité de stock"), ("Origine", T, "Ex. plateforme du transfert, article du report, motif"),
    ("Alerte", "LISTE", "AUCUNE | RUPTURE | SURSTOCK | SATURATION")]),
  "FIABILITE": ("Écart entre prévu et réalisé, calculé à chaque clôture de mois.", [
    ("ID campagne", T, ""), ("Mois", T, ""), ("Niveau", "LISTE", "MARCHE | PLATEFORME | GROUPE | ARTICLE | TERRITOIRE | BASSIN"),
    ("Cle niveau", T, ""), ("Version evaluee", T, ""), ("Prevu T", D, ""), ("Realise T", D, ""),
    ("Ecart T", D, ""), ("Ecart pourcent", D, ""), ("Biais pourcent", D, "Signé, positif = sur-prévision")]),
+ "RUPTURES": ("Ruptures constatées ou prévues, et ce que deviennent les ventes. Permet de lire la demande et le réel en parallèle.", [
+   ("ID rupture", T, ""), ("Code produit", T, ""), ("Entite", T, ""), ("Plateforme", T, "* = toutes"),
+   ("Semaine debut", T, "AAAA-Sss"), ("Semaine fin", T, "Vide si en cours"),
+   ("Origine", "LISTE", "CONSTATEE | PREVUE | PROPOSEE"), ("Cause", "LISTE", "APPRO_FOURNISSEUR | REGLEMENTAIRE | QUALITE | AUTRE"),
+   ("Traitement ventes", "LISTE", "PERDUES | REPORTEES | SUBSTITUEES"),
+   ("Taux report", D, "% des ventes non réalisées qui reviennent ou passent au substitut"),
+   ("Semaine retour", T, "Semaine où les ventes reportées reviennent"), ("Code produit substitut", T, "Si SUBSTITUEES"),
+   ("Statut", "LISTE", "ACTIVE | CLOTUREE | ANNULEE"), ("Commentaire", T, ""), ("Cree par", T, ""), ("Cree le", DT, "")]),
  "ALERTES": ("Alertes générées par l'application.", [
    ("ID alerte", T, ""), ("Date", DT, ""), ("Code alerte", T, "Voir SEUILS_ALERTES"), ("Cle", T, "Marché, article ou plateforme concerné"),
    ("Valeur", D, ""), ("Seuil", D, ""), ("Statut", "LISTE", "OUVERTE | ACQUITTEE"), ("Acquittee par", T, ""), ("Acquittee le", DT, "")]),
@@ -184,13 +192,14 @@ SORTIE = {
  "CONTRAT": ("Description versionnée des onglets PUBLICATION_*. Les autres applications se fient à elle.", [
    ("Onglet", T, ""), ("Colonne", T, ""), ("Type", T, ""), ("Description", T, ""), ("Version contrat", T, "Ex. 1.0")]),
  "PUBLICATION_MENSUELLE": ("Contrat de sortie. Prévision validée mensuelle, lue par les autres applications. Écrite uniquement à la validation.", [
-   ("ID campagne", T, ""), ("Version contrat", T, ""), ("ID version", T, ""), ("Date validation", DT, ""),
+   ("ID campagne", T, ""), ("Version contrat", T, ""), ("ID version", T, ""), ("Scenario", T, ""), ("Date validation", DT, ""),
    ("Code produit", T, ""), ("Entite", T, ""), ("Plateforme", T, ""), ("Mois", T, "AAAA-MM"),
-   ("Quantite", D, "Unité de stock"), ("Unite stock", T, ""), ("Tonnes", D, "Quantité × poids article")]),
+   ("Quantite demande", D, "Unité de stock, comme si l'article était disponible"), ("Quantite reelle", D, "Après ruptures déclarées. Égale à la demande sans rupture"),
+   ("Unite stock", T, ""), ("Tonnes demande", D, "Quantité × poids article"), ("Tonnes reelle", D, "")]),
  "PUBLICATION_HEBDO": ("Contrat de sortie. Prévision hebdomadaire sur l'horizon du suivi de stock (HORIZON_HEBDO_SEMAINES, 78 par défaut), pour l'ordonnancement.", [
-   ("ID campagne", T, ""), ("Version contrat", T, ""), ("ID version", T, ""), ("Date validation", DT, ""),
+   ("ID campagne", T, ""), ("Version contrat", T, ""), ("ID version", T, ""), ("Scenario", T, ""), ("Date validation", DT, ""),
    ("Code produit", T, ""), ("Entite", T, ""), ("Plateforme", T, ""), ("Semaine", T, "AAAA-Sss"),
-   ("Quantite", D, ""), ("Unite stock", T, ""), ("Tonnes", D, "")]),
+   ("Quantite demande", D, ""), ("Quantite reelle", D, ""), ("Unite stock", T, ""), ("Tonnes demande", D, ""), ("Tonnes reelle", D, "")]),
 }
 
 FILES = [("PARAMETRES_SOP", PARAM), ("ENTREES", ENTREES), ("SORTIE_SOP", SORTIE)]
