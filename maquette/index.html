@@ -1,0 +1,459 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Eureden S&amp;OP – Maquette</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Nunito+Sans:wght@400;600;700;800&family=Caveat:wght@600&display=swap" rel="stylesheet">
+<style>
+:root{
+  /* Charte Eureden – variables numériques */
+  --eureden-noir:#000; --eureden-blanc:#fff; --eureden-jaune:#E8E22F;
+  --eureden-jaune-vif:#F1EC42; --eureden-jaune-pale:#F8F5A7; --eureden-olive:#514F21;
+  --eureden-gris-fonce:#444; --eureden-gris:#8A8A8A; --eureden-gris-clair:#F0F0F0;
+  --eureden-vert-clair:#BAD264; --eureden-vert:#84BD66;
+  --eureden-police:'Nunito Sans',Arial,sans-serif; --eureden-police-accent:'Caveat',cursive;
+  /* Couleurs d'état – PROPOSITION (hors charte) : jamais le jaune de marque pour une alerte */
+  --ok-bg:#E3F1DA; --ok-fg:#2F5D1B;
+  --warn-bg:#FDE9CC; --warn-fg:#7A4300;
+  --bad-bg:#FADAD6; --bad-fg:#9B1C13;
+  --info-bg:#F0F0F0; --info-fg:#444;
+  --bandeau:clamp(8px,2vw,24px);
+}
+*{box-sizing:border-box}
+html{color-scheme:light}
+body{margin:0;font-family:var(--eureden-police);color:var(--eureden-gris-fonce);background:var(--eureden-gris-clair);font-size:14px;line-height:1.45}
+.bandeau{position:fixed;left:0;top:0;width:var(--bandeau);height:100vh;background:var(--eureden-jaune);z-index:20}
+.app{margin-left:var(--bandeau);min-height:100vh;display:grid;grid-template-columns:230px 1fr;grid-template-rows:auto 1fr}
+header.top{grid-column:1/3;background:#fff;border-bottom:1px solid #ddd;display:flex;gap:16px;align-items:center;flex-wrap:wrap;padding:10px 20px}
+.logo{display:flex;flex-direction:column;padding-right:18px;margin-right:4px;border-right:1px solid #ddd}
+.logo b{font-size:22px;color:#000;letter-spacing:-.5px;font-weight:800}
+.logo small{font-size:9px;letter-spacing:1.5px;color:var(--eureden-gris-fonce);text-transform:uppercase}
+.ctl{display:flex;flex-direction:column;gap:2px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px}
+select,input,button{font:inherit;color:inherit}
+select,.ctl input{border:1px solid var(--eureden-gris);border-radius:6px;padding:6px 8px;background:#fff;font-weight:600;font-size:13px;text-transform:none;letter-spacing:0}
+.seg{display:inline-flex;border:1px solid var(--eureden-gris);border-radius:6px;overflow:hidden}
+.seg button{border:0;background:#fff;padding:6px 12px;cursor:pointer;font-weight:700;font-size:13px}
+.seg button[aria-pressed=true]{background:var(--eureden-jaune);color:#000}
+.spacer{flex:1}
+.user{font-size:12px;text-align:right}
+.user b{display:block;font-size:13px}
+nav.side{background:#fff;border-right:1px solid #ddd;padding:12px 0}
+nav.side button{display:flex;gap:10px;width:100%;align-items:center;border:0;background:none;padding:11px 20px;text-align:left;cursor:pointer;font-weight:600;font-size:14px;border-left:4px solid transparent}
+nav.side button:hover{background:var(--eureden-gris-clair)}
+nav.side button[aria-current=page]{background:var(--eureden-jaune-pale);border-left-color:var(--eureden-olive);font-weight:800;color:#000}
+nav.side .ico{width:20px;text-align:center}
+nav.side hr{border:0;border-top:1px solid #ddd;margin:10px 16px}
+:focus-visible{outline:3px solid var(--eureden-olive);outline-offset:2px}
+main{padding:22px 26px 60px;min-width:0}
+h1{margin:0 0 2px;font-size:24px;color:#000;font-weight:800}
+h1 .acc{font-family:var(--eureden-police-accent);font-size:32px;font-weight:600;color:var(--eureden-olive)}
+.sub{margin:0 0 18px;color:var(--eureden-gris-fonce)}
+.proto{background:var(--eureden-jaune-pale);border:1px dashed var(--eureden-olive);padding:6px 12px;border-radius:6px;font-size:12px;margin-bottom:16px}
+.grid{display:grid;gap:16px}
+.g4{grid-template-columns:repeat(auto-fit,minmax(210px,1fr))}
+.g2{grid-template-columns:repeat(auto-fit,minmax(380px,1fr))}
+.card{background:#fff;border-radius:10px;padding:16px 18px;box-shadow:0 1px 2px rgba(0,0,0,.08);min-width:0}
+.card h2{margin:0 0 10px;font-size:15px;color:#000;font-weight:800}
+.card h2 small{font-weight:600;color:var(--eureden-gris-fonce);font-size:12px;margin-left:6px}
+.kpi{border-top:6px solid var(--eureden-jaune)}
+.kpi .l{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.4px}
+.kpi .v{font-size:28px;font-weight:800;color:#000;margin:2px 0}
+.kpi .d{font-size:12px}
+.pill{display:inline-flex;align-items:center;gap:5px;padding:2px 9px;border-radius:99px;font-size:12px;font-weight:700;white-space:nowrap}
+.p-ok{background:var(--ok-bg);color:var(--ok-fg)}
+.p-warn{background:var(--warn-bg);color:var(--warn-fg)}
+.p-bad{background:var(--bad-bg);color:var(--bad-fg)}
+.p-info{background:var(--info-bg);color:var(--info-fg)}
+.p-brand{background:var(--eureden-jaune);color:#000}
+table{border-collapse:collapse;width:100%}
+th,td{padding:7px 8px;text-align:left;border-bottom:1px solid #e6e6e6;font-size:13px}
+th{font-size:11px;text-transform:uppercase;letter-spacing:.4px;background:var(--eureden-gris-clair);color:#000;position:sticky;top:0;white-space:nowrap}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+tr.sel td{background:var(--eureden-jaune-pale)}
+tbody tr:hover td{background:#fafafa}
+tr.tot td{font-weight:800;background:var(--eureden-gris-clair);color:#000}
+.scroll{overflow:auto;max-height:520px}
+td input.cell{width:84px;text-align:right;border:1px solid var(--eureden-gris);border-radius:5px;padding:4px 6px;font-variant-numeric:tabular-nums;background:#fff}
+td input.cell.changed{border-color:var(--eureden-olive);background:var(--eureden-jaune-pale);font-weight:800}
+.btn{border:1px solid #000;background:#fff;border-radius:6px;padding:7px 14px;font-weight:700;cursor:pointer}
+.btn.pri{background:var(--eureden-jaune);color:#000;border-color:#000}
+.btn:hover{filter:brightness(.96)}
+.btn[disabled]{opacity:.45;cursor:not-allowed}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.chips{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.legend{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;margin-top:6px}
+.legend i{display:inline-block;width:14px;height:10px;margin-right:5px;vertical-align:middle}
+.alert{display:flex;gap:10px;padding:9px 0;border-bottom:1px solid #eee;align-items:flex-start}
+.alert:last-child{border:0}
+.tl{display:flex;gap:0;margin-top:6px;position:relative}
+.tl div{flex:1;text-align:center;font-size:12px;padding-top:22px;position:relative}
+.tl div::before{content:"";position:absolute;top:6px;left:0;right:0;height:4px;background:var(--eureden-gris)}
+.tl div::after{content:"";position:absolute;top:0;left:50%;width:16px;height:16px;margin-left:-8px;border-radius:50%;background:#fff;border:3px solid var(--eureden-olive)}
+.tl div.cur::after{background:var(--eureden-jaune);border-color:#000}
+.tl div.cur{font-weight:800;color:#000}
+.tl div.cur::before{background:var(--eureden-jaune)}
+.vt{border-left:4px solid var(--eureden-jaune);margin:0 0 0 8px;padding:0}
+.vt li{list-style:none;padding:0 0 14px 16px;position:relative}
+.vt li::before{content:"";position:absolute;left:-10px;top:3px;width:12px;height:12px;border-radius:50%;background:#fff;border:3px solid var(--eureden-olive)}
+.vt li.last::before{background:var(--eureden-jaune);border-color:#000}
+.bar{height:10px;border-radius:5px;background:var(--eureden-gris-clair);overflow:hidden;min-width:90px}
+.bar span{display:block;height:100%;background:var(--eureden-vert)}
+.view{display:none}.view.on{display:block}
+.note{font-size:12px;color:var(--eureden-gris-fonce)}
+dialog{border:0;border-radius:10px;padding:20px 22px;box-shadow:0 8px 30px rgba(0,0,0,.3);max-width:460px;width:92vw;font-family:inherit;color:var(--eureden-gris-fonce)}
+dialog::backdrop{background:rgba(0,0,0,.4)}
+dialog label{display:block;font-weight:700;font-size:12px;margin:12px 0 4px;text-transform:uppercase}
+dialog select,dialog textarea{width:100%;border:1px solid var(--eureden-gris);border-radius:6px;padding:7px;font:inherit}
+.toast{position:fixed;right:22px;bottom:22px;background:#000;color:#fff;padding:12px 18px;border-radius:8px;display:none;z-index:50;font-weight:700}
+@media (max-width:860px){.app{grid-template-columns:1fr}header.top{grid-column:1}nav.side{display:flex;overflow:auto;border-right:0;border-bottom:1px solid #ddd;padding:0}nav.side button{white-space:nowrap;border-left:0;border-bottom:4px solid transparent}nav.side button[aria-current=page]{border-bottom-color:var(--eureden-olive)}nav.side hr{display:none}main{padding:16px 14px}}
+@media print{.bandeau,nav.side,header.top .ctl,.btn{display:none}}
+</style>
+</head>
+<body>
+<div class="bandeau" aria-hidden="true"></div>
+<div class="app">
+<header class="top">
+  <div class="logo" title="Emplacement du logotype officiel (noir sur fond clair)"><b>Eureden</b><small>S&amp;OP · Prévisions</small></div>
+  <label class="ctl">Campagne
+    <select id="camp">
+      <option>PAC 1</option><option selected>PAC 2</option><option>PAC 3</option><option>PAC 4</option><option>Morte saison</option>
+    </select></label>
+  <label class="ctl">Entité
+    <select id="ent"><option>Coop + Négoce</option><option>Coop</option><option>Négoce</option></select></label>
+  <div class="ctl">Unité
+    <div class="seg" role="group" aria-label="Unité d'affichage">
+      <button aria-pressed="true" data-u="T">Tonnes</button><button aria-pressed="false" data-u="U">Unités</button><button aria-pressed="false" data-u="E">Valeur €</button>
+    </div></div>
+  <div class="spacer"></div>
+  <div class="user"><b>Guillaume</b>Prévisionniste des ventes</div>
+</header>
+
+<nav class="side" aria-label="Navigation principale">
+  <button data-v="dash" aria-current="page"><span class="ico">▦</span>Tableau de bord</button>
+  <button data-v="prev"><span class="ico">✎</span>Prévision &amp; arbitrage</button>
+  <button data-v="histo"><span class="ico">⟲</span>Historique &amp; substitutions</button>
+  <button data-v="cad"><span class="ico">▤</span>Cadençage</button>
+  <button data-v="stock"><span class="ico">▣</span>Projection des stocks</button>
+  <button data-v="fiab"><span class="ico">✓</span>Versions &amp; fiabilité</button>
+  <hr>
+  <button data-v="src"><span class="ico">⛁</span>Sources de données</button>
+</nav>
+
+<main>
+<div class="proto"><b>Maquette</b> – données fictives, non reliées aux Google Sheets. Couleurs d'état (rouge/orange) et logotype : propositions à valider.</div>
+
+<!-- ============ TABLEAU DE BORD ============ -->
+<section class="view on" id="v-dash">
+  <h1>Bonjour <span class="acc">Guillaume</span></h1>
+  <p class="sub">Comité S&amp;OP du mois – <b id="d-camp">PAC 2</b> 2027 · version arbitrée v3 du 08/10</p>
+  <div class="grid g4" id="kpis"></div>
+  <div class="grid g2" style="margin-top:16px">
+    <div class="card"><h2>Prévision mensuelle <small>total, en <span class="u-lbl">tonnes</span></small></h2><div id="ch-month"></div>
+      <div class="legend"><span><i style="background:#8A8A8A"></i>Réalisé N-1</span><span><i style="background:#BAD264"></i>Prévision des TC</span><span><i style="background:#514F21"></i>Prévision arbitrée</span><span><i style="background:repeating-linear-gradient(90deg,#444 0 4px,#fff 4px 7px)"></i>Budget</span></div></div>
+    <div class="card"><h2>Alertes automatiques <small>7 ouvertes</small></h2><div id="alerts"></div></div>
+  </div>
+  <div class="card" style="margin-top:16px"><h2>Vue comité par marché <small>maille marché</small></h2><div class="scroll"><table id="t-marche"></table></div></div>
+  <div class="card" style="margin-top:16px"><h2>Échéances de la campagne <small>dates à confirmer avec le service</small></h2>
+    <div class="tl"><div>PAC 1<br><span class="note">clôturée</span></div><div class="cur">PAC 2<br><span class="note">en arbitrage</span></div><div>PAC 3<br><span class="note">saisie TC bientôt</span></div><div>PAC 4<br><span class="note">à venir</span></div><div>Morte saison<br><span class="note">cde fournisseurs</span></div></div></div>
+</section>
+
+<!-- ============ PRÉVISION ============ -->
+<section class="view" id="v-prev">
+  <h1>Prévision &amp; arbitrage</h1>
+  <p class="sub">Maille article. La correction s'ajoute à la prévision des TC ; chaque enregistrement crée une nouvelle version.</p>
+  <div class="chips">
+    <label class="ctl">Marché<select id="f-marche"><option value="">Tous</option></select></label>
+    <label class="ctl">Plateforme<select><option>Toutes</option><option>Glomel</option><option>Dépôt Lorient</option><option>Dépôt Rennes</option></select></label>
+    <label class="ctl">Territoire<select><option>Tous</option><option>Argoat Centre Bretagne</option><option>Armor Ouest</option></select></label>
+    <label class="ctl">Statut<select><option>Tous</option><option>Prévision TC</option><option>Arbitrée</option><option>Validée</option></select></label>
+  </div>
+  <div class="card">
+    <div class="row" style="margin-bottom:10px"><div class="seg" role="group" aria-label="Forme de la correction"><button aria-pressed="true" data-m="q">Quantité</button><button aria-pressed="false" data-m="p">En %</button></div>
+      <span class="note">Saisir dans « Correction » (en <span class="u-lbl">tonnes</span> ou en %).</span><div class="spacer"></div>
+      <span id="pending" class="pill p-info">Aucune modification</span>
+      <button class="btn pri" id="save" disabled>Enregistrer la reprévision…</button></div>
+    <div class="scroll"><table id="t-prev"></table></div>
+  </div>
+  <div class="card" style="margin-top:16px" id="detail"><h2>Détail article</h2><p class="note">Cliquez sur une ligne pour voir les sources et les versions.</p></div>
+</section>
+
+<!-- ============ HISTORIQUE ============ -->
+<section class="view" id="v-histo">
+  <h1>Historique &amp; substitutions</h1>
+  <p class="sub">Fiabiliser l'historique avant de prévoir : ruptures, anomalies, événements, remplacements d'articles.</p>
+  <div class="card"><h2>Corrections de l'historique <small>chaque correction est tracée</small></h2><div class="scroll"><table id="t-hc"></table></div>
+    <div class="row" style="margin-top:10px"><button class="btn pri">+ Corriger une période</button><span class="note">Le brut BO/Qlik n'est jamais écrasé : on garde brut + corrigé + motif.</span></div></div>
+  <div class="card" style="margin-top:16px"><h2>Table de substitution <small>renseignée par les responsables de marché</small></h2><div class="scroll"><table id="t-sub"></table></div></div>
+</section>
+
+<!-- ============ CADENCEMENT ============ -->
+<section class="view" id="v-cad">
+  <h1>Cadençage</h1>
+  <p class="sub">Répartition du besoin annuel sur les mois, puis sur les semaines.</p>
+  <div class="chips">
+    <label class="ctl">Marché<select id="cad-m"></select></label>
+    <label class="ctl">Maille des coefficients<select><option>Par marché</option><option>Par plateforme</option><option>Par article</option></select></label>
+    <label class="ctl">Besoin annuel (T)<input id="cad-t" type="number" value="12600" step="100"></label>
+  </div>
+  <div class="grid g2">
+    <div class="card"><h2>Coefficients mensuels <small>historique 3 ans vs retenu</small></h2><div id="ch-cad"></div>
+      <div class="legend"><span><i style="background:#BAD264"></i>Moyenne historique</span><span><i style="background:#514F21"></i>Coefficient retenu</span></div>
+      <div class="row" style="margin-top:10px"><span id="cad-sum" class="pill p-ok">Total 100 %</span><button class="btn" id="cad-reset">Reprendre l'historique</button></div></div>
+    <div class="card"><h2>Résultat <small>tonnes</small></h2><div><table id="t-cad"></table></div>
+      <p class="note">Mise à jour des coefficients : à définir (responsable à confirmer). Chaque changement crée une version.</p></div>
+  </div>
+</section>
+
+<!-- ============ STOCKS ============ -->
+<section class="view" id="v-stock">
+  <h1>Projection des stocks</h1>
+  <p class="sub">Hebdomadaire, par plateforme. Intègre commandes fournisseurs en cours et délais d'approvisionnement.</p>
+  <div class="chips"><label class="ctl">Plateforme<select id="st-p"><option>Glomel</option><option>Dépôt Lorient</option><option>Dépôt Rennes</option></select></label>
+    <label class="ctl">Marché<select><option>Engrais</option><option>Phytosanitaires</option><option>Semences</option></select></label></div>
+  <div class="grid g4" id="st-kpis"></div>
+  <div class="grid g2" style="margin-top:16px">
+    <div class="card"><h2>Stock projeté <small>tonnes, 26 semaines</small></h2><div id="ch-stock"></div>
+      <div class="legend"><span><i style="background:#514F21"></i>Stock projeté</span><span><i style="background:#BAD264"></i>Corridor cible</span><span><i style="background:#9B1C13"></i>Zone de rupture</span><span>▲ Livraison fournisseur</span></div></div>
+    <div class="card"><h2>Contraintes prises en compte</h2>
+      <table><tbody>
+        <tr><td>Minimum de commande</td><td class="n">1 total camion (≈ 27 T)</td></tr>
+        <tr><td>Délai fournisseur (lead time)</td><td class="n">3 à 6 semaines</td></tr>
+        <tr><td>Capacité plateforme Glomel</td><td class="n">3 200 T</td></tr>
+        <tr><td>Transfert Glomel → dépôts</td><td class="n">1 sem.</td></tr>
+        <tr><td>Paliers commerciaux</td><td class="n">remise ≥ 100 T</td></tr>
+        <tr><td>Stock de débord (dépôts)</td><td class="n">+400 T</td></tr></tbody></table>
+      <p class="note">Valeurs fictives – à paramétrer dans la feuille « Contraintes ».</p></div>
+  </div>
+  <div class="card" style="margin-top:16px"><h2>Indicateurs par plateforme</h2><div class="scroll"><table id="t-st"></table></div></div>
+</section>
+
+<!-- ============ VERSIONS & FIABILITÉ ============ -->
+<section class="view" id="v-fiab">
+  <h1>Versions &amp; fiabilité</h1>
+  <p class="sub">Retracer chaque reprévision et mesurer l'écart entre prévu et réalisé.</p>
+  <div class="grid g2">
+    <div class="card"><h2>Historique des versions <small>marché Engrais, PAC 2</small></h2>
+      <ul class="vt" id="versions"></ul></div>
+    <div class="card"><h2>Fiabilité des prévisions <small>PAC 1 vs réalisé</small></h2>
+      <div class="scroll"><table id="t-fiab"></table></div>
+      <p class="note">Écart moyen (MAPE) = erreur absolue moyenne en %. Biais = écart signé moyen : positif = sur-prévision.</p></div>
+  </div>
+  <div class="card" style="margin-top:16px"><h2>Exports pour le comité</h2>
+    <div class="row"><button class="btn">⬇ Synthèse S&amp;OP (PDF)</button><button class="btn">⬇ Tableau marché (Excel)</button><button class="btn">⬇ Écarts de versions (Excel)</button><button class="btn">↗ Envoyer vers Google Sheets</button></div></div>
+</section>
+
+<!-- ============ SOURCES ============ -->
+<section class="view" id="v-src">
+  <h1>Sources de données</h1>
+  <p class="sub">L'application lit et écrit dans des Google Sheets, alimentés de façons diverses.</p>
+  <div class="card"><div class="scroll"><table>
+    <thead><tr><th>Feuille</th><th>Contenu</th><th>Alimentation</th><th>Dernière synchro</th><th>État</th></tr></thead><tbody id="src-body"></tbody></table></div>
+    <p class="note" style="margin-top:10px">Principe : les feuilles « entrées » (ventes, stocks, budget) sont en lecture seule dans l'application ; les feuilles « sorties » (prévisions, versions, corrections) sont écrites par l'application.</p></div>
+</section>
+</main>
+</div>
+
+<dialog id="dlg">
+  <h2 style="margin:0 0 4px;color:#000">Enregistrer la reprévision</h2>
+  <p class="note" id="dlg-sum"></p>
+  <label for="dlg-motif">Motif</label>
+  <select id="dlg-motif"><option>Politique commerciale (polco)</option><option>Promotion</option><option>Contrainte réglementaire</option><option>Objectif budget</option><option>Rupture / appro fournisseur</option><option>Autre</option></select>
+  <label for="dlg-com">Commentaire</label>
+  <textarea id="dlg-com" rows="3" placeholder="Obligatoire pour la traçabilité"></textarea>
+  <label for="dlg-st">Statut</label>
+  <select id="dlg-st"><option>Arbitrée (comité)</option><option>Proposée à validation</option></select>
+  <div class="row" style="margin-top:16px;justify-content:flex-end"><button class="btn" id="dlg-no">Annuler</button><button class="btn pri" id="dlg-ok">Créer la version v4</button></div>
+</dialog>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
+const nf=new Intl.NumberFormat('fr-FR',{maximumFractionDigits:0});
+let unit='T', mode='q';
+const UF={T:{lbl:'tonnes',k:1},U:{lbl:'unités',k:42},E:{lbl:'€',k:610}}; // facteurs fictifs
+const conv=v=>v*UF[unit].k;
+const fArt=v=>unit==='T'?nf.format(Math.round(v))+' T':nf.format(Math.round(conv(v)))+(unit==='E'?' €':' u');
+const fAgg=v=>unit==='T'?nf.format(Math.round(v))+'T':nf.format(Math.round(conv(v)))+(unit==='E'?' €':' u');
+const pct=v=>(v>=0?'+':'−')+Math.abs(v).toFixed(1).replace('.',',')+' %';
+const pill=(c,t,i)=>`<span class="pill p-${c}"><span aria-hidden="true">${i}</span>${t}</span>`;
+const ST={tc:pill('info','Prév. TC','✎'),arb:pill('brand','Arbitrée','●'),val:pill('ok','Validée','✓')};
+const MARCHES=['Engrais','Nutrition végétale','Phytosanitaires','Semences','Biocontrôle'];
+const MOIS=['Janv','Févr','Mars','Avr','Mai','Juin','Juil','Août','Sept','Oct','Nov','Déc'];
+
+/* ---------- données fictives ---------- */
+const ART=[
+ ['1602569','ACTIFLOW MN 560 5 L','Nutrition végétale','Nutrition végétale',18,21,23,24,0,'arb'],
+ ['1818480','ACTIFLOW ZN 5 L','Nutrition végétale','Nutrition végétale',14,17,16,19,0,'tc'],
+ ['2010334','AMMONITRATE 33,5 vrac','Engrais','Engrais',4200,4480,4560,4700,0,'tc'],
+ ['2010351','SOLUTION AZOTÉE 39','Engrais','Engrais',2650,2810,2790,2950,0,'arb'],
+ ['2010377','SUPER 45 TRIPLE','Engrais','Engrais',1320,1210,1290,1180,0,'val'],
+ ['2010402','NPK 15-10-20 BIG BAG','Engrais','Engrais',980,1040,1010,1250,0,'tc'],
+ ['3001120','HERBICIDE BLÉ ALPHA 5 L','Herbicides','Phytosanitaires',96,104,101,98,0,'val'],
+ ['3001155','FONGICIDE ORGE BETA 10 L','Fongicides','Phytosanitaires',142,150,147,171,0,'tc'],
+ ['3001188','ANTI-LIMACES GAMMA 15 kg','Insecticides','Phytosanitaires',64,59,62,60,0,'arb'],
+ ['4002210','SEMENCE MAÏS FOURRAGE 280','Semences maïs','Semences',310,335,341,360,0,'tc'],
+ ['4002245','SEMENCE BLÉ TENDRE ZETA','Semences céréales','Semences',1880,1950,1930,1900,0,'val'],
+ ['5003010','BIOSTIMULANT ALGUE 10 L','Biostimulants','Biocontrôle',22,31,36,42,0,'tc']
+]; // code, libellé, famille, marché, N-2, N-1, stat, TC, corr(T), statut
+const corr={}; // code -> valeur en T
+const arb=a=>a[7]+(corr[a[0]]||0);
+
+/* ---------- navigation ---------- */
+function show(v){$$('.view').forEach(e=>e.classList.toggle('on',e.id==='v-'+v));$$('nav.side button').forEach(b=>b.toggleAttribute('aria-current',b.dataset.v===v)||0);
+  $$('nav.side button').forEach(b=>b.dataset.v===v?b.setAttribute('aria-current','page'):b.removeAttribute('aria-current'));}
+$$('nav.side button').forEach(b=>b.onclick=()=>show(b.dataset.v));
+$$('.seg button[data-u]').forEach(b=>b.onclick=()=>{unit=b.dataset.u;$$('.seg button[data-u]').forEach(x=>x.setAttribute('aria-pressed',x===b));renderAll();});
+$$('.seg button[data-m]').forEach(b=>b.onclick=()=>{mode=b.dataset.m;$$('.seg button[data-m]').forEach(x=>x.setAttribute('aria-pressed',x===b));renderPrev();});
+$('#camp').onchange=e=>{$('#d-camp').textContent=e.target.value;toast('Campagne '+e.target.value+' chargée (maquette)');};
+function toast(t){const e=$('#toast');e.textContent=t;e.style.display='block';clearTimeout(toast.t);toast.t=setTimeout(()=>e.style.display='none',2600);}
+
+/* ---------- graphiques SVG ---------- */
+function groupedChart(el,{N1,TC,ARB,BUD},h=240){
+  const w=620,pl=44,pb=26,pt=10,max=Math.max(...N1,...TC,...ARB,...BUD)*1.1,bw=(w-pl)/12;
+  const y=v=>pt+(h-pt-pb)*(1-v/max);let s=`<svg viewBox="0 0 ${w} ${h}" width="100%" role="img" aria-label="Prévision mensuelle">`;
+  for(let i=0;i<=4;i++){const v=max*i/4;s+=`<line x1="${pl}" x2="${w}" y1="${y(v)}" y2="${y(v)}" stroke="#e3e3e3"/><text x="${pl-6}" y="${y(v)+4}" font-size="10" text-anchor="end" fill="#444">${nf.format(conv(v))}</text>`;}
+  MOIS.forEach((m,i)=>{const x=pl+i*bw;
+    s+=`<rect x="${x+bw*.12}" y="${y(N1[i])}" width="${bw*.24}" height="${h-pb-y(N1[i])}" fill="#8A8A8A"/>`;
+    s+=`<rect x="${x+bw*.38}" y="${y(TC[i])}" width="${bw*.24}" height="${h-pb-y(TC[i])}" fill="#BAD264"/>`;
+    s+=`<rect x="${x+bw*.64}" y="${y(ARB[i])}" width="${bw*.24}" height="${h-pb-y(ARB[i])}" fill="#514F21"/>`;
+    s+=`<text x="${x+bw/2}" y="${h-8}" font-size="10" text-anchor="middle" fill="#444">${m}</text>`;});
+  s+=`<polyline fill="none" stroke="#444" stroke-width="2" stroke-dasharray="5 4" points="${BUD.map((v,i)=>`${pl+i*bw+bw/2},${y(v)}`).join(' ')}"/></svg>`;
+  el.innerHTML=s;}
+const base=[.04,.05,.09,.11,.12,.08,.05,.07,.12,.13,.09,.05];
+const SCALE={Engrais:4,'Nutrition végétale':90,Phytosanitaires:12,Semences:1.5,Biocontrôle:90}; // le tableau marché couvre tous les articles du marché
+const scaleTo=(arr,t)=>{const k=t/arr.reduce((x,y)=>x+y,0);return arr.map(v=>v*k);};
+function renderDash(){
+  const sum=a=>a.reduce((x,y)=>x+y,0);
+  const rows=MARCHES.map((m,i)=>{const arts=ART.filter(a=>a[3]===m),k=SCALE[m];const n1=sum(arts.map(a=>a[5]))*k,tc=sum(arts.map(a=>a[7]))*k,ar=sum(arts.map(arb))*k,bu=ar*[1.02,.99,1.05,1.0,.93][i];
+    const ecN=(ar/n1-1)*100,ecB=(ar/bu-1)*100;
+    const st=Math.abs(ecN)>15?pill('warn','Écart N-1 élevé','⚠'):(Math.abs(ecB)>5?pill('warn','Hors budget','⚠'):pill('ok','Dans la cible','✓'));
+    return {m,n1,tc,ar,bu,ecN,ecB,st};});
+  const tt=k=>sum(rows.map(r=>r[k]));
+  const N1=scaleTo(base.map((c,i)=>c*(1+[2,-3,1,4,-2,3,0,-1,2,-4,1,2][i]/100)),tt('n1')),TC=scaleTo(base.map((c,i)=>c*(1+[0,2,1,-2,3,1,2,0,-1,2,0,1][i]/100)),tt('tc')),
+        ARB=scaleTo(base.map((c,i)=>c*(1+[1,1,0,1,1,0,1,1,0,1,1,0][i]/100)),tt('ar')),BUD=scaleTo(base,tt('bu'));
+  groupedChart($('#ch-month'),{N1,TC,ARB,BUD});
+  const A=tt('ar'),B=tt('bu'),N=tt('n1');
+  $('#kpis').innerHTML=[
+   ['Prévision arbitrée',fAgg(A),`${pill('ok','vs N-1 '+pct((A/N-1)*100),'▲')}`],
+   ['Budget',fAgg(B),`${pill('warn','Écart '+pct((A/B-1)*100),'▼')}`],
+   ['Fiabilité (PAC 1)','MAPE 11,4 %',`${pill('info','Biais +2,1 % (sur-prévision)','ℹ')}`],
+   ['Alertes ouvertes','7',`${pill('bad','3 ruptures prévues','✖')} ${pill('warn','2 surstocks','⚠')}`]
+  ].map(k=>`<div class="card kpi"><div class="l">${k[0]}</div><div class="v">${k[1]}</div><div class="d">${k[2]}</div></div>`).join('');
+  $('#alerts').innerHTML=[
+   ['bad','✖','Rupture prévue','Ammonitrate 33,5 – Glomel, semaine 14 (couverture 0,6 mois)'],
+   ['bad','✖','Rupture prévue','Fongicide orge BETA – Dépôt Lorient, semaine 12'],
+   ['warn','⚠','Surstock prévu','Super 45 – Dépôt Rennes : 3,4 mois de couverture en fin de campagne'],
+   ['warn','⚠','Écart vs N-1 &gt; 15 %','Biostimulant algue 10 L : +35 % (prévision arbitrée)'],
+   ['info','ℹ','Écart vs prévision','Nutrition végétale : réalisé de février −9 % vs prévu']
+  ].map(a=>`<div class="alert">${pill(a[0],a[2],a[1])}<span>${a[3]}</span></div>`).join('');
+  $('#t-marche').innerHTML=`<thead><tr><th>Marché</th><th class="n">Réalisé N-1</th><th class="n">Prév. TC</th><th class="n">Arbitrée</th><th class="n">Budget</th><th class="n">vs N-1</th><th class="n">vs budget</th><th>Lecture</th></tr></thead><tbody>`+
+   rows.map(r=>`<tr><td><b>${r.m}</b></td><td class="n">${fAgg(r.n1)}</td><td class="n">${fAgg(r.tc)}</td><td class="n">${fAgg(r.ar)}</td><td class="n">${fAgg(r.bu)}</td><td class="n">${pct(r.ecN)}</td><td class="n">${pct(r.ecB)}</td><td>${r.st}</td></tr>`).join('')+
+   `<tr class="tot"><td>Total</td><td class="n">${fAgg(N)}</td><td class="n">${fAgg(tt('tc'))}</td><td class="n">${fAgg(A)}</td><td class="n">${fAgg(B)}</td><td class="n">${pct((A/N-1)*100)}</td><td class="n">${pct((A/B-1)*100)}</td><td></td></tr></tbody>`;
+}
+
+/* ---------- prévision ---------- */
+function renderPrev(){
+  const f=$('#f-marche').value;const rows=ART.filter(a=>!f||a[3]===f);
+  const ch=Object.keys(corr).length;
+  $('#t-prev').innerHTML=`<thead><tr><th>Article</th><th>Famille</th><th class="n">N-2</th><th class="n">N-1</th><th class="n">Statistique</th><th class="n">Prév. TC</th><th class="n">Correction (${mode==='q'?UF[unit].lbl:'%'})</th><th class="n">Arbitrée</th><th class="n">vs N-1</th><th>Statut</th></tr></thead><tbody>`+
+  rows.map(a=>{const c=corr[a[0]];const val=c!==undefined?(mode==='q'?+(c*UF[unit].k).toFixed(unit==='T'?1:0):+(c/a[7]*100).toFixed(1)):'';
+    const e=(arb(a)/a[5]-1)*100;const flag=Math.abs(e)>15?` ${pill('warn','&gt; 15 %','⚠')}`:'';
+    return `<tr data-c="${a[0]}"><td><b>${a[1]}</b><br><span class="note">${a[0]}</span></td><td>${a[2]}</td><td class="n">${fArt(a[4])}</td><td class="n">${fArt(a[5])}</td><td class="n">${fArt(a[6])}</td><td class="n">${fArt(a[7])}</td>
+    <td class="n"><input class="cell${c!==undefined?' changed':''}" type="number" step="any" value="${val}" placeholder="0" aria-label="Correction ${a[1]}" data-c="${a[0]}"></td>
+    <td class="n"><b>${fArt(arb(a))}</b></td><td class="n">${pct(e)}${flag}</td><td>${c!==undefined?ST.arb:ST[a[9]]}</td></tr>`;}).join('')+'</tbody>';
+  $$('#t-prev input.cell').forEach(i=>{i.onclick=e=>e.stopPropagation();i.onchange=()=>{const a=ART.find(x=>x[0]===i.dataset.c);let v=parseFloat(i.value);
+    if(isNaN(v)||v===0){delete corr[a[0]];}else corr[a[0]]=mode==='q'?v/UF[unit].k:a[7]*v/100;renderPrev();renderDash();showDetail(a[0]);};});
+  $$('#t-prev tbody tr').forEach(tr=>tr.onclick=()=>showDetail(tr.dataset.c));
+  $('#pending').className='pill '+(ch?'p-brand':'p-info');$('#pending').textContent=ch?`${ch} modification${ch>1?'s':''} non enregistrée${ch>1?'s':''}`:'Aucune modification';
+  $('#save').disabled=!ch;
+}
+function showDetail(code){const a=ART.find(x=>x[0]===code);if(!a)return;
+  $$('#t-prev tr').forEach(t=>t.classList.toggle('sel',t.dataset.c===code));
+  $('#detail').innerHTML=`<h2>${a[1]} <small>${a[0]} · ${a[3]} / ${a[2]}</small></h2>
+  <div class="grid g2"><div><table><thead><tr><th>Source</th><th class="n">Volume</th><th>Commentaire</th></tr></thead><tbody>
+  <tr><td>Historique corrigé N-1</td><td class="n">${fArt(a[5])}</td><td class="note">2 mois corrigés (rupture)</td></tr>
+  <tr><td>Statistique (moy. pond. + lissage)</td><td class="n">${fArt(a[6])}</td><td class="note">cible budget</td></tr>
+  <tr><td>Prévision des TC</td><td class="n">${fArt(a[7])}</td><td class="note">18 TC sur 22 ont saisi</td></tr>
+  <tr><td>Polco / promo / réglementaire</td><td class="n">${fArt(0)}</td><td class="note">aucun apport</td></tr>
+  <tr class="tot"><td>Arbitrée</td><td class="n">${fArt(arb(a))}</td><td></td></tr></tbody></table></div>
+  <div><b>Versions</b><ul class="vt" style="margin-top:10px"><li>v1 · Prévision TC · 12/09<br><span class="note">${fArt(a[7])}</span></li><li>v2 · Statistique · 20/09<br><span class="note">${fArt(a[6])}</span></li><li class="last">v3 · Arbitrée comité · 08/10<br><span class="note">${fArt(a[7])} (courante)</span></li></ul></div></div>`;}
+$('#f-marche').innerHTML+=MARCHES.map(m=>`<option>${m}</option>`).join('');$('#f-marche').onchange=renderPrev;
+$('#save').onclick=()=>{const n=Object.keys(corr).length,tot=Object.values(corr).reduce((x,y)=>x+y,0);$('#dlg-sum').textContent=`${n} article(s) modifié(s) · impact net ${tot>=0?'+':'−'}${fAgg(Math.abs(tot))}`;$('#dlg').showModal();};
+$('#dlg-no').onclick=()=>$('#dlg').close();
+$('#dlg-ok').onclick=()=>{if(!$('#dlg-com').value.trim()){$('#dlg-com').focus();$('#dlg-com').style.borderColor='#9B1C13';return;}
+  Object.keys(corr).forEach(k=>{const a=ART.find(x=>x[0]===k);a[7]=arb(a);a[9]='arb';delete corr[k];});$('#dlg').close();$('#dlg-com').value='';renderAll();toast('Version v4 enregistrée – feuille « VERSIONS » mise à jour');};
+
+/* ---------- historique ---------- */
+const HC=[
+ ['AMMONITRATE 33,5 vrac','Févr 2026','Rupture','4 480 T','5 100 T','Rupture Glomel 2 semaines','Guillaume'],
+ ['SOLUTION AZOTÉE 39','Mars 2026','Pb appro fournisseur','2 810 T','3 050 T','Retard fournisseur, report en avril','Guillaume'],
+ ['FONGICIDE ORGE BETA 10 L','Mai 2025','Événement','150 T','126 T','Commande exceptionnelle grand compte','Guillaume'],
+ ['BIOSTIMULANT ALGUE 10 L','Avr 2026','Anomalie','31 T','27 T','Saisie en doublon dans Calidis','Guillaume'],
+ ['ANTI-LIMACES GAMMA 15 kg','2025','Substitution','59 T','64 T',"Report des ventes de l'ancien article",'Marie (RM)']];
+$('#t-hc').innerHTML=`<thead><tr><th>Article</th><th>Période</th><th>Type</th><th class="n">Brut</th><th class="n">Corrigé</th><th>Motif</th><th>Auteur</th></tr></thead><tbody>`+
+ HC.map(h=>`<tr><td><b>${h[0]}</b></td><td>${h[1]}</td><td>${pill('info',h[2],'⟲')}</td><td class="n">${h[3]}</td><td class="n"><b>${h[4]}</b></td><td>${h[5]}</td><td>${h[6]}</td></tr>`).join('')+'</tbody>';
+const SUB=[['ANTI-LIMACES DELTA 15 kg','ANTI-LIMACES GAMMA 15 kg',1,1],['AMMONITRATE 33,5 sac','AMMONITRATE 33,5 vrac',1,0],['HERBICIDE BLÉ OMEGA 5 L','HERBICIDE BLÉ ALPHA 5 L',1,1],['SEMENCE MAÏS 270','SEMENCE MAÏS FOURRAGE 280',0,0]];
+$('#t-sub').innerHTML=`<thead><tr><th>Article remplacé</th><th></th><th>Remplaçant</th><th>Dans la gamme</th><th>Vendable hors gamme</th><th>Marché</th></tr></thead><tbody>`+
+ SUB.map((s,i)=>`<tr><td>${s[0]}</td><td aria-hidden="true">→</td><td><b>${s[1]}</b></td>
+ <td><label><input type="checkbox" ${s[2]?'checked':''}> Oui</label></td><td><label><input type="checkbox" ${s[3]?'checked':''}> Oui</label></td><td>${['Phytosanitaires','Engrais','Phytosanitaires','Semences'][i]}</td></tr>`).join('')+'</tbody>';
+
+/* ---------- cadençage ---------- */
+const HIST={Engrais:[3,5,13,15,9,5,4,8,15,14,6,3],'Nutrition végétale':[2,4,10,14,15,12,6,5,10,10,8,4],Phytosanitaires:[2,4,10,16,18,12,7,6,10,8,5,2],Semences:[1,2,6,8,6,3,3,20,30,14,5,2],Biocontrôle:[1,2,8,12,15,14,10,8,12,9,6,3]};
+let coef=[...HIST.Engrais];
+$('#cad-m').innerHTML=MARCHES.map(m=>`<option>${m}</option>`).join('');
+$('#cad-m').onchange=()=>{coef=[...HIST[$('#cad-m').value]];renderCad();};$('#cad-reset').onclick=()=>{coef=[...HIST[$('#cad-m').value]];renderCad();};$('#cad-t').oninput=renderCad;
+function renderCad(){const m=$('#cad-m').value,h=HIST[m],T=+$('#cad-t').value||0,w=620,H=230,pl=36,pb=26,pt=10,max=40,bw=(w-pl)/12,y=v=>pt+(H-pt-pb)*(1-v/max);
+  let s=`<svg viewBox="0 0 ${w} ${H}" width="100%" role="img" aria-label="Coefficients mensuels">`;
+  for(let i=0;i<=4;i++){const v=max*i/4;s+=`<line x1="${pl}" x2="${w}" y1="${y(v)}" y2="${y(v)}" stroke="#e3e3e3"/><text x="${pl-5}" y="${y(v)+4}" font-size="10" text-anchor="end">${v} %</text>`;}
+  MOIS.forEach((mo,i)=>{const x=pl+i*bw;s+=`<rect x="${x+bw*.12}" y="${y(h[i])}" width="${bw*.35}" height="${H-pb-y(h[i])}" fill="#BAD264"/><rect x="${x+bw*.52}" y="${y(coef[i])}" width="${bw*.35}" height="${H-pb-y(coef[i])}" fill="#514F21"/><text x="${x+bw/2}" y="${H-8}" font-size="10" text-anchor="middle">${mo}</text>`;});
+  $('#ch-cad').innerHTML=s+'</svg>';
+  const tot=coef.reduce((a,b)=>a+b,0);$('#cad-sum').className='pill '+(tot===100?'p-ok':'p-bad');$('#cad-sum').innerHTML=(tot===100?'✓ ':'✖ ')+`Total ${tot} %`+(tot===100?'':' – doit faire 100 %');
+  $('#t-cad').innerHTML=`<thead><tr><th>Mois</th><th class="n">Coef. historique</th><th class="n">Coef. retenu</th><th class="n">Volume</th></tr></thead><tbody>`+MOIS.map((mo,i)=>`<tr><td>${mo}</td><td class="n">${h[i]} %</td><td class="n"><input class="cell${coef[i]!==h[i]?' changed':''}" type="number" value="${coef[i]}" data-i="${i}" aria-label="Coefficient ${mo}" style="width:64px"> %</td><td class="n">${fAgg(T*coef[i]/100)}</td></tr>`).join('')+`<tr class="tot"><td>Total</td><td class="n">100 %</td><td class="n">${tot} %</td><td class="n">${fAgg(T*tot/100)}</td></tr></tbody>`;
+  $$('#t-cad input').forEach(i=>i.onchange=()=>{coef[+i.dataset.i]=+i.value||0;renderCad();});}
+
+/* ---------- stocks ---------- */
+const SP={Glomel:{s0:2300,cap:3200,min:600,dl:2200,res:[420,380,350,420,520,610,700,720,640,520,430,380,350,330,320,330,350,390,430,480,520,490,460,420,380,350],liv:[3,8,13,17,22]},
+ 'Dépôt Lorient':{s0:640,cap:900,min:120,dl:420,res:[40,38,36,45,55,70,82,85,75,60,48,40,36,34,32,34,38,42,48,52,55,50,46,42,38,36],liv:[5,11,19]},
+ 'Dépôt Rennes':{s0:860,cap:1000,min:150,dl:440,res:[50,46,42,55,66,82,94,98,86,70,56,48,44,42,40,42,46,50,56,60,64,58,54,50,46,44],liv:[6,14,21]}};
+function proj(p){const d=SP[p];let s=d.s0;const out=[s];for(let w=0;w<26;w++){s-=d.res[w];if(d.liv.includes(w))s+=d.dl;out.push(s);}return out;}
+function renderStock(){const p=$('#st-p').value,d=SP[p],pr=proj(p),w=620,H=250,pl=44,pb=26,pt=10,max=d.cap*1.1,bw=(w-pl)/26,y=v=>pt+(H-pt-pb)*(1-Math.max(0,v)/max);
+  let s=`<svg viewBox="0 0 ${w} ${H}" width="100%" role="img" aria-label="Stock projeté">`;
+  s+=`<rect x="${pl}" y="${y(d.cap*.7)}" width="${w-pl}" height="${y(d.min)-y(d.cap*.7)}" fill="#BAD264" opacity=".45"/><rect x="${pl}" y="${y(d.min)}" width="${w-pl}" height="${H-pb-y(d.min)}" fill="#9B1C13" opacity=".12"/>`;
+  for(let i=0;i<=4;i++){const v=max*i/4;s+=`<line x1="${pl}" x2="${w}" y1="${y(v)}" y2="${y(v)}" stroke="#e3e3e3"/><text x="${pl-5}" y="${y(v)+4}" font-size="10" text-anchor="end">${nf.format(conv(v))}</text>`;}
+  s+=`<polyline fill="none" stroke="#514F21" stroke-width="2.5" points="${pr.map((v,i)=>`${pl+i*bw},${y(v)}`).join(' ')}"/>`;
+  d.liv.forEach(l=>s+=`<text x="${pl+(l+1)*bw}" y="${y(pr[l+1])-8}" font-size="11" text-anchor="middle" fill="#444">▲</text>`);
+  for(let i=0;i<26;i+=4)s+=`<text x="${pl+i*bw}" y="${H-8}" font-size="10" text-anchor="middle">S${i+1}</text>`;
+  $('#ch-stock').innerHTML=s+'</svg>';
+  const minV=Math.min(...pr),minW=pr.indexOf(minV),avg=d.res.reduce((a,b)=>a+b,0)/26*4.33,cov=pr[0]/avg,fin=pr[26];
+  const risk=minV<d.min,over=fin>d.cap*.7;
+  $('#st-kpis').innerHTML=[['Couverture actuelle',cov.toFixed(1).replace('.',',')+' mois',cov<1.5?pill('bad','Faible','✖'):pill('ok','Confortable','✓')],
+   ['Risque de rupture',risk?'Semaine '+minW:'Aucun',risk?pill('bad','Sous le stock mini','✖'):pill('ok','Stock mini respecté','✓')],
+   ['Surstock',over?'Oui':'Non',over?pill('warn','Au-dessus du corridor','⚠'):pill('ok','Dans le corridor','✓')],
+   ['Stock fin de campagne',fAgg(fin),pill('info','Cible '+fAgg(d.cap*.4),'ℹ')]].map(k=>`<div class="card kpi"><div class="l">${k[0]}</div><div class="v">${k[1]}</div><div class="d">${k[2]}</div></div>`).join('');
+  $('#t-st').innerHTML=`<thead><tr><th>Plateforme</th><th class="n">Stock actuel</th><th class="n">Capacité</th><th class="n">Taux de remplissage</th><th class="n">Couverture</th><th>Alerte</th></tr></thead><tbody>`+Object.entries(SP).map(([n,x])=>{const pj=proj(n),mn=Math.min(...pj),c=pj[0]/(x.res.reduce((a,b)=>a+b,0)/26*4.33),f=x.s0/x.cap*100;
+   return `<tr><td><b>${n}</b></td><td class="n">${fAgg(x.s0)}</td><td class="n">${fAgg(x.cap)}</td><td class="n"><div class="bar" style="display:inline-block;width:90px;vertical-align:middle"><span style="width:${f}%"></span></div> ${f.toFixed(0)} %</td><td class="n">${c.toFixed(1).replace('.',',')} mois</td><td>${mn<x.min?pill('bad','Rupture prévue','✖'):f>85?pill('warn','Saturation','⚠'):pill('ok','RAS','✓')}</td></tr>`}).join('')+'</tbody>';}
+$('#st-p').onchange=renderStock;
+
+/* ---------- versions & fiabilité ---------- */
+$('#versions').innerHTML=[['v1','Prévision des TC (consolidée)','12/09 · import Google Sheets TC','4 700 T',''],['v2','Statistique (moy. pondérée + lissage)','20/09 · Guillaume','4 560 T',''],['v3','Arbitrée – comité S&OP','08/10 · Comité (direction, commerce, supply…)','4 700 T',''],['v4','Reprévision – ajustement polco','En attente d\'enregistrement','—','last']].map(v=>`<li class="${v[4]}"><b>${v[0]} · ${v[1]}</b><br><span class="note">${v[2]}</span><br><span class="pill p-info">${v[3]}</span></li>`).join('');
+const FI=[['Engrais',8.2,1.4],['Nutrition végétale',14.6,5.8],['Phytosanitaires',9.8,-2.1],['Semences',12.3,3.2],['Biocontrôle',21.7,9.4]];
+$('#t-fiab').innerHTML=`<thead><tr><th>Marché</th><th class="n">Écart moyen</th><th>Niveau</th><th class="n">Biais</th><th>Lecture</th></tr></thead><tbody>`+FI.map(f=>`<tr><td><b>${f[0]}</b></td><td class="n">${f[1].toString().replace('.',',')} %</td><td><div class="bar"><span style="width:${Math.min(100,f[1]*3.5)}%;background:${f[1]>15?'#9B1C13':f[1]>10?'#C77A00':'#84BD66'}"></span></div></td><td class="n">${pct(f[2])}</td><td>${f[1]>15?pill('bad','À fiabiliser','✖'):f[1]>10?pill('warn','Moyenne','⚠'):pill('ok','Fiable','✓')}${Math.abs(f[2])>5?' <span class="note">'+(f[2]>0?'sur-prévision':'sous-prévision')+'</span>':''}</td></tr>`).join('')+'</tbody>';
+
+/* ---------- sources ---------- */
+$('#src-body').innerHTML=[
+ ['VENTES_REALISEES','Ventes par article × TC/bassin × mois','Export BO / Qlik, déposé par Guillaume','Hier 07:40','ok'],
+ ['PREV_TC','Prévisions saisies par les TC (PAC 1 à 4)','Application / feuilles TC','Il y a 2 h','ok'],
+ ['STOCKS_HEBDO','Stock par plateforme','Extraction hebdo (Nicolas) – à automatiser','Lundi 06:10','warn'],
+ ['BUDGET','Budget par marché et article (données sensibles)','Contrôle de gestion – accès restreint','01/10','ok'],
+ ['SUBSTITUTIONS','Table de substitution et gamme','Saisie des responsables de marché','03/10','ok'],
+ ['COMMANDES_FOURN','Commandes fournisseurs en cours, lead times','Supply','Non connectée','bad'],
+ ['VERSIONS (sortie)','Historique de toutes les prévisions','Écrite par l\'application','À chaque enregistrement','ok']
+].map(s=>`<tr><td><b>${s[0]}</b></td><td>${s[1]}</td><td>${s[2]}</td><td>${s[3]}</td><td>${{ok:pill('ok','Connectée','✓'),warn:pill('warn','Manuelle','⚠'),bad:pill('bad','À connecter','✖')}[s[4]]}</td></tr>`).join('');
+
+function renderAll(){$$('.u-lbl').forEach(e=>e.textContent=UF[unit].lbl);renderDash();renderPrev();renderCad();renderStock();}
+renderAll();
+</script>
+</body>
+</html>
