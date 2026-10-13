@@ -25,7 +25,7 @@ PARAM = {
    ("Cle", T, "DOMAINES, UNITE_PIVOT, SEUIL_ECART_N1, COUVERTURE_MIN_MOIS, COUVERTURE_MAX_MOIS, PRECISION_QTE, PRECISION_TONNES, MAX_LOT, VERSION_REFERENTIEL, RATTACHEMENT_SEMAINE"),
    ("Valeur", T, ""), ("Commentaire", T, "")]),
  "PROFILS": ("Droits par rôle. Un rôle donne des capacités ; le périmètre est dans ACCES.", [
-   ("Role", "LISTE", "ADMIN | PREV | RM | AM | RT | CD | RBP | TC | SUPPLY | CDG | DIR"),
+   ("Role", "LISTE", "ADMIN | PREV | RM | AM | RT | CD | RBP | TC | SUPPLY"),
    ("Consultation", B, ""), ("Correction prevision", B, ""), ("Arbitrage", B, ""),
    ("Validation", B, "Fige une version"), ("Correction historique", B, ""),
    ("Validation gamme", B, ""), ("Voir budget", B, "Données sensibles"),
@@ -83,7 +83,7 @@ PARAM = {
    ("Libelle", T, ""), ("Seuil", D, ""), ("Unite seuil", T, "%, mois, T"),
    ("Perimetre", T, "Marché, plateforme ou * "), ("Role destinataire", T, ""), ("Actif", B, "")]),
  "SOURCES": ("Fichiers d'entrée alimentés par ailleurs. Une ligne par flux.", [
-   ("ID source", T, ""), ("Nature", "LISTE", "VENTES | STOCKS | BUDGET | COMMANDES_FOURN | PREV_TC | ORDONNANCEMENT"),
+   ("ID source", T, ""), ("Nature", "LISTE", "VENTES | STOCKS | BUDGET | COMMANDES_FOURN | PREV_TC | POIDS_ARTICLE | ORDONNANCEMENT"),
    ("ID fichier", T, "ID Google Sheet natif"), ("Onglet", T, ""),
    ("Frequence", "LISTE", "HEBDO | MENSUEL | A_LA_DEMANDE"), ("Mode alimentation", "LISTE", "MANUEL | EXPORT_BO | QLIK | AUTOMATIQUE | APPLICATION"),
    ("Responsable", T, ""), ("Sensible", B, ""), ("Derniere synchro", DT, "Écrite par l'application"),

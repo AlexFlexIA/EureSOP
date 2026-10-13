@@ -8,7 +8,7 @@ Ce document décrit les classeurs de l'application S&OP (web app Apps Script). I
 flowchart LR
   BO[BO / Qlik<br/>exports] --> VENTES[(ENTREES<br/>VENTES_MENSUELLES)]
   NB[Extraction hebdo<br/>stocks] --> STOCKS[(ENTREES<br/>STOCKS_HEBDO)]
-  CDG[Contrôle de gestion] --> BUDGET[(ENTREES<br/>BUDGET)]
+  CDG[Fichier budget<br/>fourni par Emmanuel] --> BUDGET[(ENTREES<br/>BUDGET)]
   SUP[Supply] --> CF[(ENTREES<br/>COMMANDES_FOURN)]
   EP[EurePrev<br/>sortie TC] --> PTC[(PREV_TC)]
   PARAM[(PARAMETRES_SOP)]
@@ -37,7 +37,7 @@ Les autres applications (ordonnancement des commandes, EurePrev) ne lisent que l
 | EurePrev | S&OP | Changement |
 |---|---|---|
 | CAMPAGNES | CAMPAGNES | Ajout du type (PAC1 à PAC4, MORTE_SAISON), de l'horizon |
-| REGLAGES, PROFILS | REGLAGES, PROFILS | Nouveaux rôles (PREV, CDG, DIR, AM) et droits (arbitrage, validation, voir budget) |
+| REGLAGES, PROFILS | REGLAGES, PROFILS | Nouveaux rôles (PREV, AM) et droits (arbitrage, validation, voir budget) |
 | TC | TC | Identique : même codes, même e-mails |
 | ACCES_PAC | ACCES | Ajout de Marche, Plateforme |
 | PRODUITS_PAC (par campagne) | PRODUITS (permanent) + GAMME (par campagne) | Poids article et densité pour passer en tonnes |
@@ -92,10 +92,10 @@ C'est confortable. Le point sensible est `VENTES_MENSUELLES` à la maille articl
 
 ## 7. Points à valider avant de créer les fichiers
 
-1. **Poids article :** disponible dans quel système ? (à fournir pour PRODUITS)
-2. **Rattachement semaine → mois :** règle proposée = mois du jeudi de la semaine (norme ISO). À confirmer.
-3. **Grain de la prévision :** article × plateforme × mois est une proposition. La prévision des TC est annuelle par TC et article ; le passage au mois et à la plateforme se fait via AFFECTATION_PLATEFORME et COEFFICIENTS.
+1. **Poids article :** disponible dans un Google Sheet (réponse reçue). Il est déclaré dans SOURCES avec la nature `POIDS_ARTICLE` et copié dans PRODUITS. Reste à fournir le lien et ses colonnes.
+2. **Rattachement semaine → mois :** mois du jeudi de la semaine (validé).
+3. **Grain de la prévision (validé) :** article × plateforme × mois. La prévision des TC est annuelle par TC et article ; le passage au mois et à la plateforme se fait via AFFECTATION_PLATEFORME et COEFFICIENTS.
 4. **Qui définit les coefficients :** à décider (réponse reportée). L'onglet prévoit `Valide par` et un numéro de version.
-5. **Rôles :** liste proposée (ADMIN, PREV, RM, AM, RT, CD, RBP, TC, SUPPLY, CDG, DIR). À ajuster, notamment ce que peut corriger chaque rôle.
+5. **Rôles (validés) :** ADMIN, PREV, RM, AM, RT, CD, RBP, TC, SUPPLY. Le contrôle de gestion et la direction n'ont pas de rôle : ils reçoivent les exports du comité. Reste à confirmer ce que peut corriger chaque rôle.
 6. **Fichier d'ordonnancement :** quand l'application d'ordonnancement existera, ses colonnes de lecture sont à ajouter à `CONTRAT`.
-7. **Droits budget :** accord d'Emmanuel sur qui peut voir `BUDGET` (`Voir budget` dans PROFILS).
+7. **Droits budget :** par défaut seuls ADMIN et PREV ont `Voir budget` (PROFILS). Accord d'Emmanuel à obtenir pour élargir.
