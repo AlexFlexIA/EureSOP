@@ -6,7 +6,7 @@ Ce document décrit les classeurs de l'application S&OP (web app Apps Script). I
 
 ```mermaid
 flowchart LR
-  BO[BO / Qlik<br/>exports] --> VENTES[(ENTREES<br/>VENTES_MENSUELLES)]
+  BO[BO / Qlik<br/>exports] --> VENTES[(ENTREES<br/>VENTES_HEBDO)]
   NB[Extraction hebdo<br/>stocks] --> STOCKS[(ENTREES<br/>STOCKS_HEBDO)]
   CDG[Fichier budget<br/>fourni par Emmanuel] --> BUDGET[(ENTREES<br/>BUDGET)]
   SUP[Supply] --> CF[(ENTREES<br/>COMMANDES_FOURN)]
@@ -72,33 +72,52 @@ Une version validée est verrouillée. Le fichier `BUDGET` étant sensible, l'ap
 Les onglets `PUBLICATION_MENSUELLE` et `PUBLICATION_HEBDO` sont les seuls que les autres applications ont le droit de lire. Ils sont réécrits entièrement à chaque validation de version. `CONTRAT` décrit chaque colonne et porte un numéro de version. Une évolution du schéma incrémente ce numéro, ce qui évite de casser l'ordonnancement sans le prévenir.
 
 - **Mensuel :** article × entité × plateforme × mois, sur l'horizon de la campagne.
-- **Hebdomadaire :** même grain, sur 13 semaines (réglable). Le détail hebdomadaire plus long n'est pas stocké : l'application le recalcule à partir des coefficients de semaine du mois.
+- **Hebdomadaire :** même grain, sur l'horizon du suivi de stock actuel (78 semaines par défaut, réglable). Il ne porte que sur les articles suivis en stock, quelques dizaines par plateforme.
 
-## 6. Volumes à surveiller
+## 6. Le suivi de stock (modèle observé dans vos fichiers)
+
+Votre suivi actuel (onglet GLOMEL v3) projette, pour chaque article et chaque semaine, ces mouvements. Environ 40 articles sur Glomel, de la semaine 32 de 2025 à la semaine 26 de 2027.
+
+| Mouvement | Nature | D'où vient la donnée |
+|---|---|---|
+| STOCK_DEBUT | Calculé | Stock de fin de la semaine précédente. Première semaine : STOCKS_HEBDO |
+| ACHATS | Entrée | COMMANDES_FOURN, reste à livrer, à la date limite de livraison |
+| BESOIN_REAPPRO | **Sortie du calcul** | Quantité à commander pour tenir le stock mini (PARAMETRES_STOCK) |
+| RETOURS_MAGASINS | Entrée | Estimé (à préciser) |
+| TRANSFERT_ENTRANT | Entrée | Autre plateforme, via ROUTES_APPRO (ex. transfert de Gruel Fayer) |
+| VENTES_PREV | Sortie | Prévision arbitrée de la semaine, une ligne par entité (Coop, ONA) |
+| REPORT_VENTES | Entrée ou sortie | SUBSTITUTIONS : flufénacet, arrêt Minarix |
+| STOCK_FIN | Calculé | Début + entrées − sorties |
+
+Les lignes « Ventes prévisionnelles ONA » du suivi deviennent une ligne VENTES_PREV avec `Entite = ONA`, pas un mouvement à part.
+
+## 7. Volumes à surveiller
 
 Un classeur Google Sheets est limité à 10 millions de cellules. EurePrev en utilise déjà environ 6,9 millions pour 175 745 lignes.
 
-Estimation à confirmer avec les vraies données (hypothèses : 1 500 articles actifs, 3 plateformes en moyenne par article, 12 mois) :
+Estimation à confirmer avec les vraies données. Hypothèses : 1 500 articles actifs avec 3 plateformes en moyenne pour la prévision mensuelle ; 80 articles suivis en stock sur 3 plateformes pour le suivi hebdomadaire, sur 78 semaines et 8 mouvements.
 
 | Onglet | Lignes | Colonnes | Cellules |
 |---|---|---|---|
-| PREVISION | 54 000 | 18 | ≈ 1,0 M |
+| PREVISION | 54 000 | 19 | ≈ 1,0 M |
 | INSTANTANES (8 versions) | 432 000 | 3 | ≈ 1,3 M |
 | PUBLICATION_MENSUELLE | 54 000 | 11 | ≈ 0,6 M |
-| PUBLICATION_HEBDO (13 sem.) | 58 500 | 11 | ≈ 0,6 M |
-| **Total SORTIE_SOP** | | | **≈ 3,5 M** |
+| PUBLICATION_HEBDO | 18 700 | 11 | ≈ 0,2 M |
+| STOCKS_PROJETES (version courante) | 150 000 | 9 | ≈ 1,4 M |
+| **Total SORTIE_SOP** | | | **≈ 4,5 M** |
 
-C'est confortable. Le point sensible est `VENTES_MENSUELLES` à la maille article × TC × mois : c'est pourquoi les ventes sont réparties en **un fichier par année civile**, et non dans la sortie.
+C'est confortable. Le point sensible est `VENTES_HEBDO` : l'export actuel est à la ligne facturée, il doit être agrégé par semaine, article et point avant dépôt. Les ventes restent en **un fichier par année civile**.
 
-## 7. Points à valider avant de créer les fichiers
+## 8. Points à valider avant de créer les fichiers
 
 1. **Poids article :** disponible dans un Google Sheet (réponse reçue). Il est déclaré dans SOURCES avec la nature `POIDS_ARTICLE` et copié dans PRODUITS. Reste à fournir le lien et ses colonnes.
 2. **Rattachement semaine → mois :** mois du jeudi de la semaine (validé).
-3. **Grain de la prévision (validé) :** article × plateforme × mois. La prévision des TC est annuelle par TC et article ; le passage au mois et à la plateforme se fait via AFFECTATION_PLATEFORME et COEFFICIENTS.
+3. **Grain de la prévision :** article × plateforme × mois (validé) pour le comité. Vos fichiers sont hebdomadaires : le stockage et la publication à la semaine sont proposés et restent à valider. La prévision des TC est annuelle par TC et article ; le passage au mois et à la plateforme se fait via AFFECTATION_PLATEFORME et COEFFICIENTS.
 4. **Qui définit les coefficients :** à décider (réponse reportée). L'onglet prévoit `Valide par` et un numéro de version.
 5. **Rôles (validés) :** ADMIN, PREV, RM, AM, RT, CD, RBP, TC, SUPPLY. Le contrôle de gestion et la direction n'ont pas de rôle : ils reçoivent les exports du comité. Reste à confirmer ce que peut corriger chaque rôle.
 6. **Fichier d'ordonnancement :** quand l'application d'ordonnancement existera, ses colonnes de lecture sont à ajouter à `CONTRAT`.
 7. **Droits budget :** par défaut seuls ADMIN et PREV ont `Voir budget` (PROFILS). Accord d'Emmanuel à obtenir pour élargir.
+8. **À clarifier :** date de référence des ventes (commande ou livraison), sens de « PAC/PAL », sens de « HS GLOMEL », unité des quantités du suivi de stock, doublon « Besoin de Réappro » sur COLZOR TRIO 20 L.
 
 # Détail des onglets
 
@@ -137,7 +156,7 @@ Clé / valeur. Réglages globaux de l'application.
 
 | Colonne | Type | Règle ou exemple |
 |---|---|---|
-| Cle | TEXTE | DOMAINES, UNITE_PIVOT, SEUIL_ECART_N1, COUVERTURE_MIN_MOIS, COUVERTURE_MAX_MOIS, PRECISION_QTE, PRECISION_TONNES, MAX_LOT, VERSION_REFERENTIEL, RATTACHEMENT_SEMAINE |
+| Cle | TEXTE | DOMAINES, UNITE_PIVOT, SEUIL_ECART_N1, COUVERTURE_MIN_MOIS, COUVERTURE_MAX_MOIS, HORIZON_HEBDO_SEMAINES, PRECISION_QTE, PRECISION_TONNES, MAX_LOT, VERSION_REFERENTIEL, RATTACHEMENT_SEMAINE |
 | Valeur | TEXTE |  |
 | Commentaire | TEXTE |  |
 
@@ -204,12 +223,15 @@ Référentiel article, permanent. Une ligne par code produit et entité.
 | Niv1 | TEXTE |  |
 | Niv2 | TEXTE |  |
 | Niv3 | TEXTE |  |
+| Niv4 | TEXTE |  |
 | Famille | TEXTE |  |
 | Groupe | TEXTE |  |
 | Marche | TEXTE |  |
+| Sous marche | TEXTE |  |
 | Segment | TEXTE | PERF, REF, ACC, FLA conservés tels quels |
 | Unite stock | TEXTE | U, KG, L, SAC... |
 | Poids article | DECIMAL | Poids ou volume d'une unité de stock, en kg ou L |
+| Source poids | TEXTE | Poids de réf, Poids brut, Poids unitaire : règle de priorité à fixer |
 | Unite poids | LISTE | KG | L |
 | Densite | DECIMAL | Pour convertir L en kg ; vide si KG |
 | Dose ha | DECIMAL | Reprise EurePrev |
@@ -234,20 +256,23 @@ Gamme par campagne, validée par les responsables de marché.
 | Valide le | DATE |  |
 
 ### SUBSTITUTIONS
-Qui remplace qui, renseigné par les responsables de marché.
+Remplacements et reports de ventes entre articles, renseignés par les responsables de marché. Vaut pour l'historique et pour la prévision.
 
 | Colonne | Type | Règle ou exemple |
 |---|---|---|
 | ID substitution | TEXTE |  |
-| Code ancien | TEXTE |  |
-| Code nouveau | TEXTE |  |
+| Code ancien | TEXTE | Article qui disparaît ou perd ses ventes |
+| Code nouveau | TEXTE | Article qui reçoit le report |
 | Entite | TEXTE |  |
+| Portee | LISTE | HISTORIQUE | PREVISION | LES_DEUX |
+| Motif | LISTE | REMPLACEMENT | ARRET | REGLEMENTAIRE | AUTRE |
 | Date effet | DATE |  |
-| Taux de report | DECIMAL | % de l'historique de l'ancien repris sur le nouveau, 100 par défaut |
+| Date fin | DATE | Vide si sans fin |
+| Taux de report | DECIMAL | % des ventes de l'ancien reportées sur le nouveau, 100 par défaut |
 | Renseigne par | TEXTE |  |
 | Valide par | TEXTE |  |
 | Actif | OUI/NON |  |
-| Commentaire | TEXTE |  |
+| Commentaire | TEXTE | Ex. arrêt Minarix, report flufénacet |
 
 ### PLATEFORMES
 Lieux de stockage. Un dépôt peut dépendre d'une plateforme (GLOMEL vers dépôts).
@@ -272,9 +297,38 @@ Quelle plateforme sert quel bassin. Reprise de l'onglet PLATEFORMES d'EurePrev.
 | Entite | TEXTE |  |
 | Territoire TC | TEXTE |  |
 | Bassin TC | TEXTE |  |
-| Plateforme | TEXTE |  |
+| Plateforme | TEXTE | Plateforme rattachée |
+| Km | DECIMAL | Distance bassin vers cette plateforme |
 | Validation | LISTE | A_VALIDER | VALIDE |
 | Source | TEXTE |  |
+
+### FORCAGES
+Livraisons faites depuis une autre plateforme que la plateforme rattachée.
+
+| Colonne | Type | Règle ou exemple |
+|---|---|---|
+| Entite | TEXTE |  |
+| Bassin TC | TEXTE |  |
+| Code produit | TEXTE | Vide = tout le marché |
+| Plateforme rattachee | TEXTE |  |
+| Plateforme forcee | TEXTE |  |
+| Debut | DATE |  |
+| Fin | DATE |  |
+| Motif | TEXTE |  |
+| Actif | OUI/NON |  |
+
+### POINTS
+Points de départ des livraisons (bases de proximité, magasins). Les magasins sont regroupés.
+
+| Colonne | Type | Règle ou exemple |
+|---|---|---|
+| Code point | TEXTE | « Départ depuis » dans BO, « Code du point » dans les achats |
+| Libelle point | TEXTE |  |
+| Type point | LISTE | BDP | AB | KORIT | MAGASIN | AUTRE |
+| Groupe magasins | TEXTE | Regroupement demandé pour les magasins |
+| Bassin TC | TEXTE |  |
+| Plateforme rattachee | TEXTE |  |
+| Actif | OUI/NON |  |
 
 ### CALENDRIER
 Semaines, mois et campagnes. Évite les calculs de dates dans l'application.
@@ -323,6 +377,32 @@ Fournisseurs, délais et conditions d'achat.
 | Fin validite | DATE |  |
 | Commentaire | TEXTE |  |
 
+### ROUTES_APPRO
+D'où vient le stock d'un article sur une plateforme : fournisseur ou transfert depuis une autre plateforme.
+
+| Colonne | Type | Règle ou exemple |
+|---|---|---|
+| Plateforme | TEXTE | Destination |
+| Code produit | TEXTE | Vide = tout le marché |
+| Marche | TEXTE |  |
+| Type source | LISTE | FOURNISSEUR | PLATEFORME |
+| Code source | TEXTE | Code fournisseur ou plateforme d'origine, ex. GRUEL |
+| Delai semaines | ENTIER |  |
+| Actif | OUI/NON |  |
+| Commentaire | TEXTE |  |
+
+### PARAMETRES_STOCK
+Seuils de stock par article et plateforme. Servent à calculer le besoin de réapprovisionnement.
+
+| Colonne | Type | Règle ou exemple |
+|---|---|---|
+| Plateforme | TEXTE |  |
+| Code produit | TEXTE |  |
+| Stock mini | DECIMAL | Unité de stock |
+| Stock cible | DECIMAL |  |
+| Lot reappro | DECIMAL | Taille de lot ou palier d'achat |
+| Actif | OUI/NON |  |
+
 ### SEUILS_ALERTES
 Alertes automatiques.
 
@@ -366,19 +446,24 @@ Décisions de conception en attente ou validées (même principe qu'EurePrev).
 
 ## Fichiers d'entrée (un fichier par flux)
 
-### VENTES_MENSUELLES
-Ventes réalisées. Un fichier par année civile (volume). Déposé depuis BO.
+### VENTES_HEBDO
+Ventes réalisées, agrégées par semaine de livraison, article et point de départ. Un fichier par année civile. Déposé depuis BO ou Qlik.
 
 | Colonne | Type | Règle ou exemple |
 |---|---|---|
-| Mois | TEXTE | AAAA-MM |
+| Semaine livraison | TEXTE | AAAA-Sss |
+| Semaine commande | TEXTE | Vide si inconnue |
 | Code produit | TEXTE |  |
+| Code point | TEXTE | Départ depuis |
 | Entite | TEXTE |  |
-| Code technicien | TEXTE |  |
 | Bassin TC | TEXTE |  |
-| Plateforme | TEXTE | Si connue |
+| Plateforme rattachee | TEXTE |  |
+| Plateforme forcee | TEXTE | Si livraison forcée |
+| PAC | TEXTE | Campagne de rattachement |
+| Reference PAC PAL | TEXTE | Sens à confirmer |
 | Quantite | DECIMAL | Unité de stock |
-| Valeur euro | DECIMAL | Vide si inconnue |
+| Poids total kg | DECIMAL |  |
+| Valeur euro | DECIMAL |  |
 | Source | TEXTE |  |
 
 ### STOCKS_HEBDO
@@ -394,18 +479,24 @@ Stock par plateforme, extraction hebdomadaire.
 | Source | TEXTE |  |
 
 ### COMMANDES_FOURN
-Commandes fournisseurs en cours.
+Commandes fournisseurs (commandes d'achat), extraction ERP.
 
 | Colonne | Type | Règle ou exemple |
 |---|---|---|
 | N commande | TEXTE |  |
+| N commande vente associee | TEXTE | Vide si achat pour stock |
 | Code fournisseur | TEXTE |  |
+| Nom fournisseur | TEXTE |  |
+| Societe partenaire | TEXTE |  |
 | Code produit | TEXTE |  |
-| Plateforme | TEXTE |  |
+| Code point | TEXTE | Plateforme de livraison |
 | Date commande | DATE |  |
-| Date livraison prevue | DATE |  |
-| Quantite | DECIMAL | Unité de stock |
-| Statut | LISTE | EN_COURS | LIVREE | ANNULEE |
+| Date limite livraison | DATE |  |
+| Etat | TEXTE | Valeurs de l'ERP à lister |
+| Quantite commandee | DECIMAL | Unité de stock |
+| Quantite receptionnee | DECIMAL |  |
+| Quantite reste a livrer | DECIMAL |  |
+| Prix unitaire | DECIMAL |  |
 
 ### BUDGET
 Budget par article et mois. Données sensibles, accès restreint.
@@ -440,6 +531,7 @@ Catalogue des versions de la campagne. Une version = un jeu complet de prévisio
 | ID campagne | TEXTE |  |
 | Numero | ENTIER |  |
 | Type | LISTE | PREV_TC | STATISTIQUE | ARBITREE | VALIDEE |
+| Scenario | TEXTE | BASE par défaut. Ex. ARRET_MINARIX |
 | Libelle | TEXTE |  |
 | Statut | LISTE | BROUILLON | COURANTE | ARCHIVEE |
 | Date reunion S&OP | DATE |  |
@@ -461,6 +553,7 @@ Version courante. Une ligne par article, entité, plateforme et mois.
 | Mois | TEXTE | AAAA-MM |
 | Qte historique corrigee N-1 | DECIMAL | Unité de stock |
 | Qte statistique | DECIMAL |  |
+| Tendance retenue | DECIMAL | % appliqué à l'historique N-1, choisi par le prévisionniste |
 | Qte TC | DECIMAL |  |
 | Qte evenements | DECIMAL | Polco, promo, réglementaire |
 | Qte correction | DECIMAL |  |
@@ -525,19 +618,18 @@ Apports du commerce à la prévision : polco, promotions, grands comptes, appels
 | Actif | OUI/NON |  |
 
 ### STOCKS_PROJETES
-Projection hebdomadaire par plateforme et marché pour la version courante.
+Projection hebdomadaire du stock par article et plateforme, version et scénario courants. Une ligne par mouvement.
 
 | Colonne | Type | Règle ou exemple |
 |---|---|---|
 | ID version | TEXTE |  |
+| Scenario | TEXTE |  |
 | Semaine | TEXTE | AAAA-Sss |
 | Plateforme | TEXTE |  |
-| Marche | TEXTE |  |
-| Stock debut T | DECIMAL |  |
-| Sorties prevues T | DECIMAL |  |
-| Entrees fournisseurs T | DECIMAL |  |
-| Stock fin T | DECIMAL |  |
-| Couverture mois | DECIMAL |  |
+| Code produit | TEXTE |  |
+| Mouvement | LISTE | STOCK_DEBUT | ACHATS | BESOIN_REAPPRO | RETOURS_MAGASINS | TRANSFERT_ENTRANT | VENTES_PREV | REPORT_VENTES | STOCK_FIN |
+| Quantite | DECIMAL | Unité de stock |
+| Origine | TEXTE | Ex. plateforme du transfert, article du report, motif |
 | Alerte | LISTE | AUCUNE | RUPTURE | SURSTOCK | SATURATION |
 
 ### FIABILITE
@@ -638,7 +730,7 @@ Contrat de sortie. Prévision validée mensuelle, lue par les autres application
 | Tonnes | DECIMAL | Quantité × poids article |
 
 ### PUBLICATION_HEBDO
-Contrat de sortie. Prévision hebdomadaire sur l'horizon court (par défaut 13 semaines), pour l'ordonnancement.
+Contrat de sortie. Prévision hebdomadaire sur l'horizon du suivi de stock (HORIZON_HEBDO_SEMAINES, 78 par défaut), pour l'ordonnancement.
 
 | Colonne | Type | Règle ou exemple |
 |---|---|---|

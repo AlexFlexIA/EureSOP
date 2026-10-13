@@ -13,6 +13,7 @@ DEFAUTS = {
    ("SEUIL_ECART_N1","15","Alerte si écart vs N-1 supérieur (%)"),("COUVERTURE_MIN_MOIS","1","Risque de rupture en dessous"),
    ("COUVERTURE_MAX_MOIS","3","Surstock au-dessus"),("PRECISION_QTE","3","Décimales"),("PRECISION_TONNES","3","Décimales"),
    ("MAX_LOT","1000","Lignes modifiées par enregistrement"),("VERSION_REFERENTIEL","1","Incrémenter après modification manuelle"),
+   ("HORIZON_HEBDO_SEMAINES","78","Aligné sur le suivi de stock actuel (S32 2025 à S26 2027)"),
    ("RATTACHEMENT_SEMAINE","JEUDI","Une semaine appartient au mois de son jeudi (à confirmer)")],
  "PROFILS": [("ADMIN","OUI","OUI","OUI","OUI","OUI","OUI","OUI","OUI","GLOBAL"),
    ("PREV","OUI","OUI","OUI","NON","OUI","NON","OUI","NON","GLOBAL"),
@@ -30,7 +31,12 @@ DEFAUTS = {
    ("Rattachement semaine vers mois","Mois du jeudi","VALIDE_UTILISATEUR"),
    ("Poids article","Lu dans un Google Sheet, lien à fournir","A_COMPLETER"),
    ("Accès au budget","À valider avec Emmanuel","A_COMPLETER"),
-   ("Dates des campagnes PAC1 à PAC4 et morte saison","À renseigner","A_COMPLETER")],
+   ("Dates des campagnes PAC1 à PAC4 et morte saison","À renseigner","A_COMPLETER"),
+   ("Grain hebdomadaire de la prévision","Mois pour le comité, semaine en stockage et publication","A_VALIDER"),
+   ("Date de référence des ventes","Date de livraison ou de commande à choisir","A_COMPLETER"),
+   ("Priorité entre les sources de poids","Poids de réf, Poids brut, Poids unitaire","A_COMPLETER")],
+ "SUBSTITUTIONS": [("SUB_001","","","","PREVISION","ARRET","","","100","","","NON","Exemple : arrêt Minarix, à renseigner"),
+   ("SUB_002","","","","PREVISION","REGLEMENTAIRE","","","","","","NON","Exemple : report ventes flufénacet, à renseigner")],
  "CAMPAGNES": [("SOP_2027_PAC2","PAC 2 2027","PAC2","2027","2026","2025","","","","12","PREPARATION","","OUI","Exemple à adapter")],
 }
 

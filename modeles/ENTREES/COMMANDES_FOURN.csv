@@ -1,1 +1,1 @@
-N commande,Code fournisseur,Code produit,Plateforme,Date commande,Date livraison prevue,Quantite,Statut
+N commande,N commande vente associee,Code fournisseur,Nom fournisseur,Societe partenaire,Code produit,Code point,Date commande,Date limite livraison,Etat,Quantite commandee,Quantite receptionnee,Quantite reste a livrer,Prix unitaire
