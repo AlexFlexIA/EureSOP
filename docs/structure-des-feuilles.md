@@ -99,7 +99,9 @@ Les capacités sont décrites dans `CAPACITES` : par plateforme, et si besoin pa
 | RECEPTION_HEBDO | Ce qui peut être reçu en une semaine |
 | EXPEDITION_HEBDO | Ce qui peut être sorti en une semaine |
 
-L'unité est la tonne, la palette ou le m³. Pour convertir en palettes, `PRODUITS` porte « Unités par palette ». Une capacité peut changer selon la saison (début et fin de validité). Les limites s'additionnent : la plateforme et chacune de ses familles doivent toutes être respectées.
+L'unité est la **tonne, le kg, le litre ou l'unité**, au choix pour chaque ligne. L'application convertit chaque article avec son poids ou son volume (`PRODUITS` : poids article, unité du poids, densité). Un article qu'on ne peut pas convertir dans l'unité de la capacité est signalé en contrôle.
+
+**Zones et articles dangereux.** Une zone est une partie d'une plateforme, par exemple Cevezo 2 à Glomel (`PLATEFORMES`, type ZONE, plateforme parente GLOMEL). `PRODUITS` indique si un article est dangereux, et `REGLES_STOCKAGE` l'oriente vers la bonne zone : les articles dangereux vont en Cevezo 2, obligatoirement ou de préférence. La zone a sa propre capacité dans `CAPACITES`, en plus de celle de la plateforme. Une capacité peut changer selon la saison (début et fin de validité). Les limites s'additionnent : la plateforme, ses zones, ses familles et ses articles dangereux doivent toutes être respectées.
 
 L'application calcule les commandes en plusieurs passes, article par article puis plateforme par plateforme :
 
@@ -107,7 +109,8 @@ L'application calcule les commandes en plusieurs passes, article par article pui
 2. **Contraintes d'achat** : minimum de commande, multiple (camion complet), palier de remise, délai du fournisseur (`CONTRAINTES_APPRO`). Cela donne la semaine de commande.
 3. **Contrôle des capacités** : charge projetée par semaine, plateforme et famille (`OCCUPATION_PROJETEE`).
 4. **Cadençage** : si une semaine dépasse la capacité de réception ou de stockage, l'application fractionne la livraison, l'avance ou la retarde dans les limites autorisées (« Avance max » et « Retard max » par fournisseur et article). Le stock débord des dépôts compte comme capacité supplémentaire.
-5. **Résultat** : `PLAN_APPRO` garde pour chaque commande la quantité brute, la quantité proposée, le décalage et les contraintes qui ont joué. Les commandes validées sont publiées aux achats et à l'ordonnancement (`PUBLICATION_APPRO`).
+5. **Demandes de décalage** : une commande peut être décalée à la demande du **client** ou de la **logistique**. Les personnes autorisées dépendent de la période de campagne (PAC 1 à PAC 4, morte saison) : elles sont listées dans `DECIDEURS_APPRO`, avec leur pouvoir (demander ou accepter). Chaque demande et sa décision sont gardées dans `DEMANDES_DECALAGE`. Une date imposée (verrouillée) n'est plus déplacée par le calcul.
+6. **Résultat** : `PLAN_APPRO` garde pour chaque commande la quantité brute, la quantité proposée, le décalage et les contraintes qui ont joué. Les commandes validées sont publiées aux achats et à l'ordonnancement (`PUBLICATION_APPRO`).
 
 Une saturation prévue qu'aucun décalage autorisé ne résout est signalée par l'alerte SATURATION_PREVUE : c'est une décision à prendre en comité (augmenter la capacité, utiliser un dépôt de débord, décaler une campagne).
 
@@ -164,7 +167,7 @@ Le point sensible reste `VENTES_HEBDO` : l'export actuel est à la ligne factur�
 4. **Qui définit les coefficients :** à décider (réponse reportée). L'onglet prévoit `Valide par` et un numéro de version.
 5. **Rôles (validés) :** ADMIN, PREV, RM, AM, RT, CD, RBP, TC, SUPPLY. Le contrôle de gestion et la direction n'ont pas de rôle : ils reçoivent les exports du comité. Reste à confirmer ce que peut corriger chaque rôle.
 6. **Fichier d'ordonnancement :** quand l'application d'ordonnancement existera, ses colonnes de lecture sont à ajouter à `CONTRAT`.
-7. **Capacités :** unité (tonnes, palettes, m³), niveau de détail (plateforme seule ou famille) et décalages autorisés par fournisseur à fixer avec le supply.
+7. **Capacités (validé) :** unités tonnes, kg, litres et unités ; détail par plateforme, zone (Cevezo 2), famille et article dangereux. Restent à fournir : les capacités chiffrées, la liste des articles dangereux, et les noms des décideurs de décalage par période de campagne.
 8. **Droits budget :** par défaut seuls ADMIN et PREV ont `Voir budget` (PROFILS). Accord d'Emmanuel à obtenir pour élargir.
 9. **À clarifier :** date de référence des ventes (commande ou livraison), sens de « PAC/PAL », sens de « HS GLOMEL », unité des quantités du suivi de stock, doublon « Besoin de Réappro » sur COLZOR TRIO 20 L.
 
@@ -279,7 +282,8 @@ Référentiel article, permanent. Une ligne par code produit et entité.
 | Sous marche | TEXTE |  |
 | Segment | TEXTE | PERF, REF, ACC, FLA conservés tels quels |
 | Unite stock | TEXTE | U, KG, L, SAC... |
-| Unites par palette | DECIMAL | Pour convertir en palettes si la capacité est en palettes |
+| Dangereux | OUI/NON | Doit être stocké en zone dangereuse (ex. Cevezo 2 à Glomel) |
+| Classe danger | TEXTE | Classe ADR ou code ONU, si connue |
 | Poids article | DECIMAL | Poids ou volume d'une unité de stock, en kg ou L |
 | Source poids | TEXTE | Poids de réf, Poids brut, Poids unitaire : règle de priorité à fixer |
 | Unite poids | LISTE | KG | L |
@@ -325,14 +329,14 @@ Remplacements et reports de ventes entre articles, renseignés par les responsab
 | Commentaire | TEXTE | Ex. arrêt Minarix, report flufénacet |
 
 ### PLATEFORMES
-Lieux de stockage. Un dépôt peut dépendre d'une plateforme (GLOMEL vers dépôts). Les capacités sont dans CAPACITES.
+Lieux de stockage. Un dépôt peut dépendre d'une plateforme (GLOMEL vers dépôts) et une zone est une partie d'une plateforme (Cevezo 2 à Glomel). Les capacités sont dans CAPACITES.
 
 | Colonne | Type | Règle ou exemple |
 |---|---|---|
 | Plateforme | TEXTE | Code, ex. GLOMEL |
 | Libelle | TEXTE |  |
-| Type | LISTE | PLATEFORME | DEPOT | DEPOT_DEBORD |
-| Plateforme parente | TEXTE | Alimente ce dépôt |
+| Type | LISTE | PLATEFORME | DEPOT | DEPOT_DEBORD | ZONE |
+| Plateforme parente | TEXTE | Alimente ce dépôt, ou plateforme qui contient la zone (CEVEZO2 pour GLOMEL) |
 | Entite | TEXTE |  |
 | Actif | OUI/NON |  |
 
@@ -341,16 +345,28 @@ Capacités par plateforme, avec ou sans détail par famille. Plusieurs lignes po
 
 | Colonne | Type | Règle ou exemple |
 |---|---|---|
-| Plateforme | TEXTE |  |
-| Niveau | LISTE | PLATEFORME | GROUPE | FAMILLE | MARCHE |
-| Cle niveau | TEXTE | * pour le total de la plateforme, sinon le groupe, la famille ou le marché |
+| Plateforme | TEXTE | Plateforme, dépôt ou zone |
+| Niveau | LISTE | PLATEFORME | ZONE | GROUPE | FAMILLE | MARCHE | ARTICLE | DANGEREUX |
+| Cle niveau | TEXTE | * pour le total, sinon le groupe, la famille, le marché, le code article. OUI pour DANGEREUX |
 | Type capacite | LISTE | STOCKAGE | RECEPTION_HEBDO | EXPEDITION_HEBDO |
-| Unite | LISTE | T | PALETTES | M3 |
+| Unite | LISTE | T | KG | L | U |
 | Capacite | DECIMAL | Valeur maximale dans l'unité |
 | Seuil alerte pourcent | DECIMAL | Alerte au-delà de ce taux, ex. 90 |
 | Debut validite | DATE | Vide = toujours. Permet une capacité saisonnière |
 | Fin validite | DATE |  |
 | Commentaire | TEXTE | Ex. stockage séparé des produits dangereux |
+
+### REGLES_STOCKAGE
+Où stocker quoi : les articles dangereux, une famille ou un article sont orientés vers une zone.
+
+| Colonne | Type | Règle ou exemple |
+|---|---|---|
+| Plateforme | TEXTE | Ex. GLOMEL |
+| Zone | TEXTE | Ex. CEVEZO2 |
+| Critere | LISTE | DANGEREUX | FAMILLE | MARCHE | ARTICLE |
+| Valeur critere | TEXTE | OUI pour DANGEREUX, sinon le code |
+| Mode | LISTE | OBLIGATOIRE | PREFERE |
+| Actif | OUI/NON |  |
 
 ### AFFECTATION_PLATEFORME
 Quelle plateforme sert quel bassin. Reprise de l'onglet PLATEFORMES d'EurePrev.
@@ -440,6 +456,19 @@ Fournisseurs, délais et conditions d'achat.
 | Debut validite | DATE |  |
 | Fin validite | DATE |  |
 | Commentaire | TEXTE |  |
+
+### DECIDEURS_APPRO
+Qui peut demander ou accepter un décalage de commande, selon la période de campagne. Une demande vient du client ou de la logistique.
+
+| Colonne | Type | Règle ou exemple |
+|---|---|---|
+| Type campagne | LISTE | PAC1 | PAC2 | PAC3 | PAC4 | MORTE_SAISON |
+| Marche | TEXTE | * = tous |
+| Plateforme | TEXTE | * = toutes |
+| Email Google | TEXTE |  |
+| Pouvoir | LISTE | DEMANDER | ACCEPTER |
+| Origine represente | LISTE | CLIENT | LOGISTIQUE |
+| Actif | OUI/NON |  |
 
 ### ROUTES_APPRO
 D'où vient le stock d'un article sur une plateforme : fournisseur ou transfert depuis une autre plateforme.
@@ -778,9 +807,31 @@ Commandes proposées, cadencées pour respecter minimums, multiples, délais et 
 | Unite stock | TEXTE |  |
 | Contraintes appliquees | TEXTE | MIN_COMMANDE | MULTIPLE | LEAD_TIME | CAPACITE_RECEPTION | CAPACITE_STOCKAGE | PALIER_REMISE |
 | Ecart semaines | ENTIER | Livraison moins besoin. Négatif = avancée |
+| Origine decalage | LISTE | AUCUN | CAPACITE | CLIENT | LOGISTIQUE | FOURNISSEUR |
+| Verrouillee | OUI/NON | OUI = date imposée, le calcul ne la déplace pas |
 | Statut | LISTE | PROPOSEE | VALIDEE | PASSEE | ANNULEE |
 | Valide par | TEXTE |  |
 | Valide le | DATE |  |
+| Commentaire | TEXTE |  |
+
+### DEMANDES_DECALAGE
+Demandes de décalage d'une commande, venant du client ou de la logistique, et leur décision.
+
+| Colonne | Type | Règle ou exemple |
+|---|---|---|
+| ID demande | TEXTE |  |
+| ID ligne appro | TEXTE |  |
+| Plateforme | TEXTE |  |
+| Code produit | TEXTE |  |
+| Origine | LISTE | CLIENT | LOGISTIQUE |
+| Demandeur | TEXTE | Email réel |
+| Demande le | DATE |  |
+| Semaine livraison souhaitee | TEXTE | AAAA-Sss |
+| Date imposee | OUI/NON | OUI = ne peut pas être déplacée ensuite |
+| Motif | TEXTE |  |
+| Decision | LISTE | DEMANDEE | ACCEPTEE | REFUSEE |
+| Decide par | TEXTE | Voir DECIDEURS_APPRO |
+| Decide le | DATE |  |
 | Commentaire | TEXTE |  |
 
 ### OCCUPATION_PROJETEE
@@ -792,10 +843,10 @@ Charge projetée face aux capacités, par semaine, plateforme et famille.
 | Scenario | TEXTE |  |
 | Semaine | TEXTE | AAAA-Sss |
 | Plateforme | TEXTE |  |
-| Niveau | LISTE | PLATEFORME | GROUPE | FAMILLE | MARCHE |
+| Niveau | LISTE | PLATEFORME | ZONE | GROUPE | FAMILLE | MARCHE | ARTICLE | DANGEREUX |
 | Cle niveau | TEXTE |  |
 | Type capacite | LISTE | STOCKAGE | RECEPTION_HEBDO | EXPEDITION_HEBDO |
-| Unite | TEXTE |  |
+| Unite | LISTE | T | KG | L | U |
 | Charge | DECIMAL | Stock projeté ou flux de la semaine |
 | Capacite | DECIMAL |  |
 | Taux pourcent | DECIMAL |  |

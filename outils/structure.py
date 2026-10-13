@@ -43,7 +43,7 @@ PARAM = {
    ("Code produit", T, "Texte"), ("Entite", T, ""), ("Libelle produit", T, ""),
    ("Niv1", T, ""), ("Niv2", T, ""), ("Niv3", T, ""), ("Niv4", T, ""), ("Famille", T, ""), ("Groupe", T, ""),
    ("Marche", T, ""), ("Sous marche", T, ""), ("Segment", T, "PERF, REF, ACC, FLA conservés tels quels"),
-   ("Unite stock", T, "U, KG, L, SAC..."), ("Unites par palette", D, "Pour convertir en palettes si la capacité est en palettes"), ("Poids article", D, "Poids ou volume d'une unité de stock, en kg ou L"),
+   ("Unite stock", T, "U, KG, L, SAC..."), ("Dangereux", B, "Doit être stocké en zone dangereuse (ex. Cevezo 2 à Glomel)"), ("Classe danger", T, "Classe ADR ou code ONU, si connue"), ("Poids article", D, "Poids ou volume d'une unité de stock, en kg ou L"),
    ("Source poids", T, "Poids de réf, Poids brut, Poids unitaire : règle de priorité à fixer"), ("Unite poids", "LISTE", "KG | L"), ("Densite", D, "Pour convertir L en kg ; vide si KG"),
    ("Dose ha", D, "Reprise EurePrev"), ("Coefficient", D, "Reprise EurePrev"), ("Mode conversion", "LISTE", "DOSE_MULTIPLICATEUR | DOSE_DIVISEUR | SANS_SURFACE"),
    ("Date fin de vie", DT, "Vide si actif"), ("Actif", B, ""), ("Commentaire", T, "")]),
@@ -58,18 +58,22 @@ PARAM = {
    ("Date effet", DT, ""), ("Date fin", DT, "Vide si sans fin"),
    ("Taux de report", D, "% des ventes de l'ancien reportées sur le nouveau, 100 par défaut"),
    ("Renseigne par", T, ""), ("Valide par", T, ""), ("Actif", B, ""), ("Commentaire", T, "Ex. arrêt Minarix, report flufénacet")]),
- "PLATEFORMES": ("Lieux de stockage. Un dépôt peut dépendre d'une plateforme (GLOMEL vers dépôts). Les capacités sont dans CAPACITES.", [
+ "PLATEFORMES": ("Lieux de stockage. Un dépôt peut dépendre d'une plateforme (GLOMEL vers dépôts) et une zone est une partie d'une plateforme (Cevezo 2 à Glomel). Les capacités sont dans CAPACITES.", [
    ("Plateforme", T, "Code, ex. GLOMEL"), ("Libelle", T, ""),
-   ("Type", "LISTE", "PLATEFORME | DEPOT | DEPOT_DEBORD"), ("Plateforme parente", T, "Alimente ce dépôt"),
+   ("Type", "LISTE", "PLATEFORME | DEPOT | DEPOT_DEBORD | ZONE"), ("Plateforme parente", T, "Alimente ce dépôt, ou plateforme qui contient la zone (CEVEZO2 pour GLOMEL)"),
    ("Entite", T, ""), ("Actif", B, "")]),
  "CAPACITES": ("Capacités par plateforme, avec ou sans détail par famille. Plusieurs lignes possibles par plateforme et par période.", [
-   ("Plateforme", T, ""), ("Niveau", "LISTE", "PLATEFORME | GROUPE | FAMILLE | MARCHE"),
-   ("Cle niveau", T, "* pour le total de la plateforme, sinon le groupe, la famille ou le marché"),
+   ("Plateforme", T, "Plateforme, dépôt ou zone"), ("Niveau", "LISTE", "PLATEFORME | ZONE | GROUPE | FAMILLE | MARCHE | ARTICLE | DANGEREUX"),
+   ("Cle niveau", T, "* pour le total, sinon le groupe, la famille, le marché, le code article. OUI pour DANGEREUX"),
    ("Type capacite", "LISTE", "STOCKAGE | RECEPTION_HEBDO | EXPEDITION_HEBDO"),
-   ("Unite", "LISTE", "T | PALETTES | M3"), ("Capacite", D, "Valeur maximale dans l'unité"),
+   ("Unite", "LISTE", "T | KG | L | U"), ("Capacite", D, "Valeur maximale dans l'unité"),
    ("Seuil alerte pourcent", D, "Alerte au-delà de ce taux, ex. 90"),
    ("Debut validite", DT, "Vide = toujours. Permet une capacité saisonnière"), ("Fin validite", DT, ""),
    ("Commentaire", T, "Ex. stockage séparé des produits dangereux")]),
+ "REGLES_STOCKAGE": ("Où stocker quoi : les articles dangereux, une famille ou un article sont orientés vers une zone.", [
+   ("Plateforme", T, "Ex. GLOMEL"), ("Zone", T, "Ex. CEVEZO2"),
+   ("Critere", "LISTE", "DANGEREUX | FAMILLE | MARCHE | ARTICLE"), ("Valeur critere", T, "OUI pour DANGEREUX, sinon le code"),
+   ("Mode", "LISTE", "OBLIGATOIRE | PREFERE"), ("Actif", B, "")]),
  "AFFECTATION_PLATEFORME": ("Quelle plateforme sert quel bassin. Reprise de l'onglet PLATEFORMES d'EurePrev.", [
    ("Entite", T, ""), ("Territoire TC", T, ""), ("Bassin TC", T, ""), ("Plateforme", T, "Plateforme rattachée"), ("Km", D, "Distance bassin vers cette plateforme"),
    ("Validation", "LISTE", "A_VALIDER | VALIDE"), ("Source", T, "")]),
@@ -98,6 +102,9 @@ PARAM = {
    ("Multiple commande T", D, "Ex. camion complet"), ("Palier remise T", D, ""),
    ("Avance max semaines", E, "De combien on peut avancer une livraison pour respecter une capacité"), ("Retard max semaines", E, "De combien on peut la retarder sans risque de rupture"),
    ("Debut validite", DT, ""), ("Fin validite", DT, ""), ("Commentaire", T, "")]),
+ "DECIDEURS_APPRO": ("Qui peut demander ou accepter un décalage de commande, selon la période de campagne. Une demande vient du client ou de la logistique.", [
+   ("Type campagne", "LISTE", "PAC1 | PAC2 | PAC3 | PAC4 | MORTE_SAISON"), ("Marche", T, "* = tous"), ("Plateforme", T, "* = toutes"),
+   ("Email Google", T, ""), ("Pouvoir", "LISTE", "DEMANDER | ACCEPTER"), ("Origine represente", "LISTE", "CLIENT | LOGISTIQUE"), ("Actif", B, "")]),
  "ROUTES_APPRO": ("D'où vient le stock d'un article sur une plateforme : fournisseur ou transfert depuis une autre plateforme.", [
    ("Plateforme", T, "Destination"), ("Code produit", T, "Vide = tout le marché"), ("Marche", T, ""),
    ("Type source", "LISTE", "FOURNISSEUR | PLATEFORME"), ("Code source", T, "Code fournisseur ou plateforme d'origine, ex. GRUEL"),
@@ -203,11 +210,17 @@ SORTIE = {
    ("Quantite besoin brut", D, "Unité de stock, avant contraintes"), ("Quantite proposee", D, "Après contraintes"),
    ("Unite stock", T, ""), ("Contraintes appliquees", T, "MIN_COMMANDE | MULTIPLE | LEAD_TIME | CAPACITE_RECEPTION | CAPACITE_STOCKAGE | PALIER_REMISE"),
    ("Ecart semaines", E, "Livraison moins besoin. Négatif = avancée"),
+   ("Origine decalage", "LISTE", "AUCUN | CAPACITE | CLIENT | LOGISTIQUE | FOURNISSEUR"), ("Verrouillee", B, "OUI = date imposée, le calcul ne la déplace pas"),
    ("Statut", "LISTE", "PROPOSEE | VALIDEE | PASSEE | ANNULEE"), ("Valide par", T, ""), ("Valide le", DT, ""), ("Commentaire", T, "")]),
+ "DEMANDES_DECALAGE": ("Demandes de décalage d'une commande, venant du client ou de la logistique, et leur décision.", [
+   ("ID demande", T, ""), ("ID ligne appro", T, ""), ("Plateforme", T, ""), ("Code produit", T, ""),
+   ("Origine", "LISTE", "CLIENT | LOGISTIQUE"), ("Demandeur", T, "Email réel"), ("Demande le", DT, ""),
+   ("Semaine livraison souhaitee", T, "AAAA-Sss"), ("Date imposee", B, "OUI = ne peut pas être déplacée ensuite"), ("Motif", T, ""),
+   ("Decision", "LISTE", "DEMANDEE | ACCEPTEE | REFUSEE"), ("Decide par", T, "Voir DECIDEURS_APPRO"), ("Decide le", DT, ""), ("Commentaire", T, "")]),
  "OCCUPATION_PROJETEE": ("Charge projetée face aux capacités, par semaine, plateforme et famille.", [
    ("ID version", T, ""), ("Scenario", T, ""), ("Semaine", T, "AAAA-Sss"), ("Plateforme", T, ""),
-   ("Niveau", "LISTE", "PLATEFORME | GROUPE | FAMILLE | MARCHE"), ("Cle niveau", T, ""),
-   ("Type capacite", "LISTE", "STOCKAGE | RECEPTION_HEBDO | EXPEDITION_HEBDO"), ("Unite", T, ""),
+   ("Niveau", "LISTE", "PLATEFORME | ZONE | GROUPE | FAMILLE | MARCHE | ARTICLE | DANGEREUX"), ("Cle niveau", T, ""),
+   ("Type capacite", "LISTE", "STOCKAGE | RECEPTION_HEBDO | EXPEDITION_HEBDO"), ("Unite", "LISTE", "T | KG | L | U"),
    ("Charge", D, "Stock projeté ou flux de la semaine"), ("Capacite", D, ""), ("Taux pourcent", D, ""),
    ("Alerte", "LISTE", "AUCUNE | SEUIL | SATURATION")]),
  "ALERTES": ("Alertes générées par l'application.", [

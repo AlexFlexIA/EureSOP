@@ -136,6 +136,7 @@ dialog select,dialog textarea{width:100%;border:1px solid var(--eureden-gris);bo
   <button data-v="histo"><span class="ico">⟲</span>Historique &amp; substitutions</button>
   <button data-v="cad"><span class="ico">▤</span>Cadençage</button>
   <button data-v="stock"><span class="ico">▣</span>Projection des stocks</button>
+  <button data-v="appro"><span class="ico">▥</span>Approvisionnements</button>
   <button data-v="fiab"><span class="ico">✓</span>Versions &amp; fiabilité</button>
   <hr>
   <button data-v="src"><span class="ico">⛁</span>Sources de données</button>
@@ -230,6 +231,30 @@ dialog select,dialog textarea{width:100%;border:1px solid var(--eureden-gris);bo
   <div class="card" style="margin-top:16px"><h2>Indicateurs par plateforme</h2><div class="scroll"><table id="t-st"></table></div></div>
 </section>
 
+<!-- ============ APPROVISIONNEMENTS ============ -->
+<section class="view" id="v-appro">
+  <h1>Approvisionnements cadencés</h1>
+  <p class="sub">Commandes proposées pour tenir le stock mini sans dépasser les capacités. Chaque ligne indique les contraintes appliquées.</p>
+  <div class="chips">
+    <label class="ctl">Périmètre<select id="ap-scope"><option value="glomel">Glomel (plateforme entière)</option><option value="cevezo">Cevezo 2 (zone, articles dangereux)</option><option value="herb">Glomel, famille Herbicides</option></select></label>
+    <div class="ctl">Unité de la capacité
+      <div class="seg" role="group" aria-label="Unité de la capacité" id="ap-unit"><button aria-pressed="true" data-k="T">T</button><button aria-pressed="false" data-k="KG">kg</button><button aria-pressed="false" data-k="L">L</button><button aria-pressed="false" data-k="U">Unités</button></div></div>
+  </div>
+  <div class="grid g4" id="ap-kpis"></div>
+  <div class="grid g2" style="margin-top:16px">
+    <div class="card"><h2>Charge de stockage vs capacité <small id="ap-cap-sub"></small></h2><div id="ch-appro"></div>
+      <div class="legend"><span><i style="background:#8A8A8A"></i>Sans cadençage</span><span><i style="background:#514F21"></i>Avec cadençage</span><span><i style="background:#9B1C13"></i>Capacité</span><span><i style="background:repeating-linear-gradient(90deg,#444 0 4px,#fff 4px 7px)"></i>Seuil d'alerte 90 %</span></div></div>
+    <div class="card"><h2>Qui peut décider <small>période PAC 2</small></h2>
+      <table><thead><tr><th>Personne</th><th>Représente</th><th>Pouvoir</th></tr></thead><tbody>
+        <tr><td>Responsable logistique Glomel</td><td><span class="pill p-info"><span aria-hidden="true">ℹ</span>Logistique</span></td><td><span class="pill p-ok"><span aria-hidden="true">✓</span>Accepter</span></td></tr>
+        <tr><td>Service client</td><td><span class="pill p-info"><span aria-hidden="true">ℹ</span>Client</span></td><td><span class="pill p-brand"><span aria-hidden="true">✎</span>Demander</span></td></tr>
+        <tr><td>Responsable de marché Engrais</td><td><span class="pill p-info"><span aria-hidden="true">ℹ</span>Client</span></td><td><span class="pill p-brand"><span aria-hidden="true">✎</span>Demander</span></td></tr>
+        <tr><td>Prévisionniste</td><td><span class="pill p-info"><span aria-hidden="true">ℹ</span>Logistique</span></td><td><span class="pill p-ok"><span aria-hidden="true">✓</span>Accepter</span></td></tr></tbody></table>
+      <p class="note">Liste par période de campagne (PAC 1 à 4, morte saison) dans la feuille « DECIDEURS_APPRO ». Noms fictifs.</p></div>
+  </div>
+  <div class="card" style="margin-top:16px"><h2>Commandes proposées <small id="ap-count"></small></h2><div class="scroll"><table id="t-appro"></table></div></div>
+</section>
+
 <!-- ============ VERSIONS & FIABILITÉ ============ -->
 <section class="view" id="v-fiab">
   <h1>Versions &amp; fiabilité</h1>
@@ -256,6 +281,18 @@ dialog select,dialog textarea{width:100%;border:1px solid var(--eureden-gris);bo
 </main>
 </div>
 
+<dialog id="dlg-dec">
+  <h2 style="margin:0 0 4px;color:#000">Demander un décalage</h2>
+  <p class="note" id="dec-sum"></p>
+  <label for="dec-orig">Origine de la demande</label>
+  <select id="dec-orig"><option>Client</option><option>Logistique</option></select>
+  <label for="dec-sem">Semaine de livraison souhaitée</label>
+  <select id="dec-sem"></select>
+  <label><input type="checkbox" id="dec-imp"> Date imposée : le calcul ne la déplacera plus</label>
+  <label for="dec-mot">Motif</label>
+  <textarea id="dec-mot" rows="3" placeholder="Obligatoire pour la traçabilité"></textarea>
+  <div class="row" style="margin-top:16px;justify-content:flex-end"><button class="btn" id="dec-no">Annuler</button><button class="btn pri" id="dec-ok">Envoyer la demande</button></div>
+</dialog>
 <dialog id="dlg">
   <h2 style="margin:0 0 4px;color:#000">Enregistrer la reprévision</h2>
   <p class="note" id="dlg-sum"></p>
@@ -447,6 +484,49 @@ function renderStock(){const p=$('#st-p').value,d=SP[p],pr=proj(p),w=620,H=250,p
    return `<tr><td><b>${n}</b></td><td class="n">${fAgg(x.s0)}</td><td class="n">${fAgg(x.cap)}</td><td class="n"><div class="bar" style="display:inline-block;width:90px;vertical-align:middle"><span style="width:${f}%"></span></div> ${f.toFixed(0)} %</td><td class="n">${c.toFixed(1).replace('.',',')} mois</td><td>${mn<x.min?pill('bad','Rupture prévue','✖'):f>85?pill('warn','Saturation','⚠'):pill('ok','RAS','✓')}</td></tr>`}).join('')+'</tbody>';}
 $('#st-p').onchange=renderStock;
 
+/* ---------- approvisionnements ---------- */
+const APS={glomel:{cap:3200,nom:'Glomel',base:w=>1500+520*Math.sin(w/4.2)+(w>12?-150:0),sans:w=>(w>=8&&w<=12?1250:0),avec:w=>(w>=7&&w<=13?560:0)},
+ cevezo:{cap:600,nom:'Cevezo 2',base:w=>230+110*Math.sin(w/3.6),sans:w=>(w>=13&&w<=16?420:0),avec:w=>(w>=11&&w<=17?210:0)},
+ herb:{cap:1200,nom:'Glomel, Herbicides',base:w=>600+180*Math.sin(w/4),sans:w=>(w>=14&&w<=17?640:0),avec:w=>0}};
+APS.herb.avec=w=>(w>=12&&w<=18?330:0);
+const APU={T:{k:1,l:'T'},KG:{k:1000,l:'kg'},L:{k:1100,l:'L'},U:{k:210,l:'u'}};
+let apK='T';
+const ORD=[
+ ['AMMONITRATE 33,5 vrac','glomel','ENGRAIS NORD','S09','S03','S08',540,560,['MULTIPLE','LEAD_TIME'],'AUCUN',false,'PROPOSEE'],
+ ['SOLUTION AZOTÉE 39','glomel','ENGRAIS NORD','S10','S04','S11',480,480,['CAPACITE_RECEPTION'],'CAPACITE',false,'PROPOSEE'],
+ ['SUPER 45 TRIPLE','glomel','PHOSPHATES OUEST','S12','S06','S13',310,320,['PALIER_REMISE'],'AUCUN',false,'PROPOSEE'],
+ ['NPK 15-10-20 BIG BAG','glomel','ENGRAIS NORD','S11','S05','S11',260,260,['LEAD_TIME'],'CLIENT',true,'VALIDEE'],
+ ['FONGICIDE ORGE BETA 10 L','cevezo','PHYTO SUD','S14','S08','S12',120,120,['CAPACITE_STOCKAGE'],'CAPACITE',false,'PROPOSEE'],
+ ['HERBICIDE BLÉ ALPHA 5 L','cevezo','PHYTO SUD','S15','S09','S15',38,60,['MIN_COMMANDE'],'AUCUN',false,'PROPOSEE'],
+ ['ANTI-LIMACES GAMMA 15 kg','cevezo','AGRO PRO','S16','S10','S17',64,64,['LEAD_TIME'],'LOGISTIQUE',true,'VALIDEE'],
+ ['HERBICIDE COLZA DELTA 5 L','herb','PHYTO SUD','S13','S07','S12',210,224,['MULTIPLE','CAPACITE_STOCKAGE'],'CAPACITE',false,'PROPOSEE']];
+const CTAG={MULTIPLE:'Multiple',LEAD_TIME:'Délai',CAPACITE_RECEPTION:'Capacité réception',CAPACITE_STOCKAGE:'Capacité stockage',PALIER_REMISE:'Palier remise',MIN_COMMANDE:'Mini commande'};
+const OPILL={AUCUN:pill('info','Aucun','ℹ'),CAPACITE:pill('warn','Capacité','⚠'),CLIENT:pill('brand','Client','●'),LOGISTIQUE:pill('brand','Logistique','●')};
+function renderAppro(){const sc=$('#ap-scope').value,d=APS[sc],kk=APU[apK].k,w=620,H=250,pl=48,pb=26,pt=14,N=26,max=Math.max(d.cap*1.25,...Array.from({length:N},(_,i)=>d.base(i)+d.sans(i)))*1.0,bw=(w-pl)/(N-1),y=v=>pt+(H-pt-pb)*(1-v/max);
+  const sans=Array.from({length:N},(_,i)=>d.base(i)+d.sans(i)),avec=Array.from({length:N},(_,i)=>d.base(i)+d.avec(i));
+  let s=`<svg viewBox="0 0 ${w} ${H}" width="100%" role="img" aria-label="Charge de stockage face à la capacité">`;
+  for(let i=0;i<=4;i++){const v=max*i/4;s+=`<line x1="${pl}" x2="${w}" y1="${y(v)}" y2="${y(v)}" stroke="#e3e3e3"/><text x="${pl-5}" y="${y(v)+4}" font-size="10" text-anchor="end" fill="#444">${nf.format(v*kk)}</text>`;}
+  s+=`<line x1="${pl}" x2="${w}" y1="${y(d.cap*.9)}" y2="${y(d.cap*.9)}" stroke="#444" stroke-dasharray="5 4"/><line x1="${pl}" x2="${w}" y1="${y(d.cap)}" y2="${y(d.cap)}" stroke="#9B1C13" stroke-width="2"/><text x="${w-4}" y="${y(d.cap)-5}" font-size="10" text-anchor="end" fill="#9B1C13">Capacité ${nf.format(d.cap*kk)} ${APU[apK].l}</text>`;
+  s+=`<polyline fill="none" stroke="#8A8A8A" stroke-width="2" points="${sans.map((v,i)=>`${pl+i*bw},${y(v)}`).join(' ')}"/><polyline fill="none" stroke="#514F21" stroke-width="2.5" points="${avec.map((v,i)=>`${pl+i*bw},${y(v)}`).join(' ')}"/>`;
+  for(let i=0;i<N;i+=4)s+=`<text x="${pl+i*bw}" y="${H-8}" font-size="10" text-anchor="middle" fill="#444">S${i+1}</text>`;
+  $('#ch-appro').innerHTML=s+'</svg>';$('#ap-cap-sub').textContent=`${d.nom}, en ${APU[apK].l}`;
+  const over=sans.filter(v=>v>d.cap).length,overA=avec.filter(v=>v>d.cap).length;
+  const rows=ORD.filter(o=>sc==='glomel'?o[1]!=='cevezo'&&o[1]!=='herb'||o[1]==='glomel':o[1]===sc);
+  $('#ap-kpis').innerHTML=[['Commandes proposées',rows.length,pill('info',rows.filter(o=>o[11]==='VALIDEE').length+' validée(s)','ℹ')],
+    ['Semaines en dépassement',`${over} → ${overA}`,overA?pill('bad','Reste une saturation','✖'):pill('ok','Résolu par le cadençage','✓')],
+    ['Décalées par capacité',rows.filter(o=>o[9]==='CAPACITE').length,pill('warn','À vérifier avec la logistique','⚠')],
+    ['Dates imposées',rows.filter(o=>o[10]).length,pill('brand','Client ou logistique','●')]].map(k=>`<div class="card kpi"><div class="l">${k[0]}</div><div class="v">${k[1]}</div><div class="d">${k[2]}</div></div>`).join('');
+  $('#ap-count').textContent=`${rows.length} lignes · ${d.nom}`;
+  $('#t-appro').innerHTML=`<thead><tr><th>Article</th><th>Besoin</th><th>Commande</th><th>Livraison</th><th class="n">Besoin brut</th><th class="n">Proposée</th><th>Contraintes</th><th>Origine du décalage</th><th>Statut</th><th></th></tr></thead><tbody>`+rows.map((o,i)=>`<tr><td><b>${o[0]}</b><br><span class="note">${o[2]}</span></td><td>${o[3]}</td><td>${o[4]}</td><td>${o[5]}${o[10]?' <span class="pill p-brand">Imposée</span>':''}</td><td class="n">${nf.format(o[6]*kk)} ${APU[apK].l}</td><td class="n"><b>${nf.format(o[7]*kk)} ${APU[apK].l}</b></td><td>${o[8].map(c=>`<span class="pill p-info">${CTAG[c]}</span>`).join(' ')}</td><td>${OPILL[o[9]]}</td><td>${o[11]==='VALIDEE'?ST.val:pill('info','Proposée','✎')}</td><td>${o[10]?'':`<button class="btn" data-o="${ORD.indexOf(o)}" style="white-space:nowrap">Décaler…</button>`}</td></tr>`).join('')+'</tbody>';
+  $$('#t-appro button[data-o]').forEach(b=>b.onclick=()=>{const o=ORD[+b.dataset.o];$('#dec-sum').textContent=`${o[0]} · ${APS[o[1]].nom} · livraison prévue ${o[5]}`;
+    $('#dec-sem').innerHTML=Array.from({length:7},(_,i)=>{const n=parseInt(o[5].slice(1))-3+i;return `<option>S${String(Math.max(1,n)).padStart(2,'0')}</option>`;}).join('');$('#dec-mot').style.borderColor='';$('#dlg-dec').dataset.o=b.dataset.o;$('#dlg-dec').showModal();});}
+$('#ap-scope').onchange=renderAppro;
+$$('#ap-unit button').forEach(b=>b.onclick=()=>{apK=b.dataset.k;$$('#ap-unit button').forEach(x=>x.setAttribute('aria-pressed',x===b));renderAppro();});
+$('#dec-no').onclick=()=>$('#dlg-dec').close();
+$('#dec-ok').onclick=()=>{if(!$('#dec-mot').value.trim()){$('#dec-mot').focus();$('#dec-mot').style.borderColor='#9B1C13';return;}
+  const o=ORD[+$('#dlg-dec').dataset.o],orig=$('#dec-orig').value;o[5]=$('#dec-sem').value;o[9]=orig==='Client'?'CLIENT':'LOGISTIQUE';o[10]=$('#dec-imp').checked;o[11]='PROPOSEE';
+  $('#dlg-dec').close();$('#dec-mot').value='';renderAppro();toast(`Demande envoyée aux décideurs PAC 2 (origine ${orig.toLowerCase()})`);};
+
 /* ---------- versions & fiabilité ---------- */
 $('#versions').innerHTML=[['v1','Prévision des TC (consolidée)','12/09 · import Google Sheets TC','4 700 T',''],['v2','Statistique (moy. pondérée + lissage)','20/09 · Guillaume','4 560 T',''],['v3','Arbitrée – comité S&OP','08/10 · Comité (direction, commerce, supply…)','4 700 T',''],['v4','Reprévision – ajustement polco','En attente d\'enregistrement','—','last']].map(v=>`<li class="${v[4]}"><b>${v[0]} · ${v[1]}</b><br><span class="note">${v[2]}</span><br><span class="pill p-info">${v[3]}</span></li>`).join('');
 const FI=[['Engrais',8.2,1.4],['Nutrition végétale',14.6,5.8],['Phytosanitaires',9.8,-2.1],['Semences',12.3,3.2],['Biocontrôle',21.7,9.4]];
@@ -463,7 +543,7 @@ $('#src-body').innerHTML=[
  ['VERSIONS (sortie)','Historique de toutes les prévisions','Écrite par l\'application','À chaque enregistrement','ok']
 ].map(s=>`<tr><td><b>${s[0]}</b></td><td>${s[1]}</td><td>${s[2]}</td><td>${s[3]}</td><td>${{ok:pill('ok','Connectée','✓'),warn:pill('warn','Manuelle','⚠'),bad:pill('bad','À connecter','✖')}[s[4]]}</td></tr>`).join('');
 
-function renderAll(){$$('.u-lbl').forEach(e=>e.textContent=UF[unit].lbl);renderDash();renderPrev();renderCad();renderStock();}
+function renderAll(){$$('.u-lbl').forEach(e=>e.textContent=UF[unit].lbl);renderDash();renderPrev();renderCad();renderStock();renderAppro();}
 renderAll();
 </script>
 </body>
