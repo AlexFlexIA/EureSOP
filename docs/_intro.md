@@ -42,7 +42,7 @@ Les autres applications (ordonnancement des commandes, EurePrev) ne lisent que l
 | ACCES_PAC | ACCES | Ajout de Marche, Plateforme |
 | PRODUITS_PAC (par campagne) | PRODUITS (permanent) + GAMME (par campagne) | Poids article et densité pour passer en tonnes |
 | PLATEFORMES | AFFECTATION_PLATEFORME + PLATEFORMES | La liste des lieux de stockage devient un onglet à part |
-| MENSUALISATION | COEFFICIENTS | Niveaux marché, famille, article, plateforme ; mois puis semaine du mois |
+| MENSUALISATION | COEFFICIENTS | Cadençage **à la semaine** (semaine ISO) ; niveaux marché, famille, article, plateforme |
 | SOURCES, ARBITRAGES | SOURCES, ARBITRAGES | SOURCES décrit aussi la nature du flux et son responsable |
 | DONNEES, JOURNAL, OPERATIONS | PREVISION, JOURNAL, OPERATIONS | Même logique : verrou, reçus, auteur réel |
 
@@ -71,7 +71,7 @@ Une version validée est verrouillée. Le fichier `BUDGET` étant sensible, l'ap
 
 Les onglets `PUBLICATION_MENSUELLE` et `PUBLICATION_HEBDO` sont les seuls que les autres applications ont le droit de lire. Ils sont réécrits entièrement à chaque validation de version. `CONTRAT` décrit chaque colonne et porte un numéro de version. Une évolution du schéma incrémente ce numéro, ce qui évite de casser l'ordonnancement sans le prévenir.
 
-- **Mensuel :** article × entité × plateforme × mois, sur l'horizon de la campagne.
+- **Mensuel :** article × entité × plateforme × mois, sur l'horizon de la campagne (somme des semaines).
 - **Hebdomadaire :** même grain, sur l'horizon du suivi de stock actuel (78 semaines par défaut, réglable). Il ne porte que sur les articles suivis en stock, quelques dizaines par plateforme.
 
 ## 6. Le suivi de stock (modèle observé dans vos fichiers)
@@ -116,24 +116,28 @@ Les lignes « Ventes prévisionnelles ONA » du suivi deviennent une ligne VENTE
 
 Un classeur Google Sheets est limité à 10 millions de cellules. EurePrev en utilise déjà environ 6,9 millions pour 175 745 lignes.
 
-Estimation à confirmer avec les vraies données. Hypothèses : 1 500 articles actifs avec 3 plateformes en moyenne pour la prévision mensuelle ; 80 articles suivis en stock sur 3 plateformes pour le suivi hebdomadaire, sur 78 semaines et 8 mouvements.
+Le cadençage est hebdomadaire, mais la prévision n'est **pas** stockée à la semaine : on stocke le besoin sur l'horizon de la campagne par article, entité et plateforme, et l'application le répartit par semaine avec `COEFFICIENTS` et `AJUSTEMENTS_SEMAINE`. Stocker 234 000 lignes hebdomadaires dans PREVISION, plus des photos par version, dépasserait la limite.
+
+Estimation à confirmer avec les vraies données. Hypothèses : 1 500 articles actifs avec 3 plateformes en moyenne ; 80 articles suivis en stock sur 3 plateformes, sur 78 semaines et 9 mouvements ; 8 versions.
 
 | Onglet | Lignes | Colonnes | Cellules |
 |---|---|---|---|
-| PREVISION | 54 000 | 19 | ≈ 1,0 M |
-| INSTANTANES (8 versions) | 432 000 | 3 | ≈ 1,3 M |
-| PUBLICATION_MENSUELLE | 54 000 | 11 | ≈ 0,6 M |
-| PUBLICATION_HEBDO | 18 700 | 11 | ≈ 0,2 M |
-| STOCKS_PROJETES (version courante) | 150 000 | 9 | ≈ 1,4 M |
-| **Total SORTIE_SOP** | | | **≈ 4,5 M** |
+| PREVISION | 4 500 | 20 | ≈ 0,1 M |
+| INSTANTANES (8 versions) | 36 000 | 3 | ≈ 0,1 M |
+| PUBLICATION_MENSUELLE (tous articles) | 54 000 | 14 | ≈ 0,8 M |
+| PUBLICATION_HEBDO (articles suivis) | 18 700 | 14 | ≈ 0,3 M |
+| STOCKS_PROJETES (version courante) | 170 000 | 10 | ≈ 1,7 M |
+| **Total SORTIE_SOP** | | | **≈ 3,0 M** |
 
-C'est confortable. Le point sensible est `VENTES_HEBDO` : l'export actuel est à la ligne facturée, il doit être agrégé par semaine, article et point avant dépôt. Les ventes restent en **un fichier par année civile**.
+Si vous voulez publier **tous** les articles à la semaine (réglage `PUBLICATION_HEBDO_TOUS`), ajoutez environ 5 M de cellules : à décider avec l'ordonnancement.
+
+Le point sensible reste `VENTES_HEBDO` : l'export actuel est à la ligne facturée, il doit être agrégé par semaine, article et point avant dépôt. Les ventes restent en **un fichier par année civile**.
 
 ## 8. Points à valider avant de créer les fichiers
 
 1. **Poids article :** disponible dans un Google Sheet (réponse reçue). Il est déclaré dans SOURCES avec la nature `POIDS_ARTICLE` et copié dans PRODUITS. Reste à fournir le lien et ses colonnes.
 2. **Rattachement semaine → mois :** mois du jeudi de la semaine (validé).
-3. **Grain de la prévision :** article × plateforme × mois (validé) pour le comité. Vos fichiers sont hebdomadaires : le stockage et la publication à la semaine sont proposés et restent à valider. La prévision des TC est annuelle par TC et article ; le passage au mois et à la plateforme se fait via AFFECTATION_PLATEFORME et COEFFICIENTS.
+3. **Cadençage (validé) :** à la semaine. Le besoin est stocké par article, entité et plateforme sur l'horizon, réparti par semaine par l'application. Le comité lit les mois en additionnant les semaines (mois du jeudi). Reste à choisir la pondération des années et le lissage (REGLAGES, valeurs de départ proposées). La prévision des TC est annuelle par TC et article ; le passage au mois et à la plateforme se fait via AFFECTATION_PLATEFORME et COEFFICIENTS.
 4. **Qui définit les coefficients :** à décider (réponse reportée). L'onglet prévoit `Valide par` et un numéro de version.
 5. **Rôles (validés) :** ADMIN, PREV, RM, AM, RT, CD, RBP, TC, SUPPLY. Le contrôle de gestion et la direction n'ont pas de rôle : ils reçoivent les exports du comité. Reste à confirmer ce que peut corriger chaque rôle.
 6. **Fichier d'ordonnancement :** quand l'application d'ordonnancement existera, ses colonnes de lecture sont à ajouter à `CONTRAT`.

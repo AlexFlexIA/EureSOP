@@ -22,7 +22,7 @@ PARAM = {
    ("ID sortie", T, "ID du fichier SORTIE_SOP de cette campagne"),
    ("Selectionnee", B, ""), ("Commentaire", T, "")]),
  "REGLAGES": ("Clé / valeur. Réglages globaux de l'application.", [
-   ("Cle", T, "DOMAINES, UNITE_PIVOT, SEUIL_ECART_N1, COUVERTURE_MIN_MOIS, COUVERTURE_MAX_MOIS, HORIZON_HEBDO_SEMAINES, PRECISION_QTE, PRECISION_TONNES, MAX_LOT, VERSION_REFERENTIEL, RATTACHEMENT_SEMAINE"),
+   ("Cle", T, "DOMAINES, UNITE_PIVOT, SEUIL_ECART_N1, COUVERTURE_MIN_MOIS, COUVERTURE_MAX_MOIS, HORIZON_HEBDO_SEMAINES, PONDERATION_ANNEES, ALPHA_LISSAGE, PUBLICATION_HEBDO_TOUS, PRECISION_QTE, PRECISION_TONNES, MAX_LOT, VERSION_REFERENTIEL, RATTACHEMENT_SEMAINE"),
    ("Valeur", T, ""), ("Commentaire", T, "")]),
  "PROFILS": ("Droits par rôle. Un rôle donne des capacités ; le périmètre est dans ACCES.", [
    ("Role", "LISTE", "ADMIN | PREV | RM | AM | RT | CD | RBP | TC | SUPPLY"),
@@ -76,11 +76,12 @@ PARAM = {
    ("Semaine", T, "AAAA-Sss (ISO)"), ("Date debut", DT, "Lundi"), ("Date fin", DT, "Dimanche"),
    ("Mois rattache", T, "AAAA-MM, règle REGLAGES / RATTACHEMENT_SEMAINE"), ("Annee", E, ""),
    ("Type campagne", T, "PAC1 à PAC4 ou MORTE_SAISON")]),
- "COEFFICIENTS": ("Cadençage : répartition d'un besoin annuel en mois, puis en semaines du mois.", [
+ "COEFFICIENTS": ("Cadençage : répartition du besoin annuel sur les semaines. Les mois du comité s'obtiennent en additionnant les semaines.", [
    ("ID campagne", T, ""), ("Niveau", "LISTE", "MARCHE | FAMILLE | ARTICLE | PLATEFORME"),
    ("Cle niveau", T, "Valeur du niveau, ex. marché ENGRAIS"), ("Plateforme", T, "* = toutes"),
-   ("Granularite", "LISTE", "MOIS | SEMAINE_DU_MOIS"), ("Periode", E, "1 à 12, ou 1 à 5"),
-   ("Coefficient", D, "En %. Somme = 100 par ensemble"), ("Origine", "LISTE", "HISTORIQUE | MANUEL"),
+   ("Semaine", E, "Numéro de semaine ISO, 1 à 53"),
+   ("Coefficient", D, "En % du besoin annuel. Somme = 100 par ensemble Niveau, Cle niveau, Plateforme"),
+   ("Origine", "LISTE", "HISTORIQUE | BUDGET | MANUEL"),
    ("Version coefficients", E, "Incrémentée à chaque modification"), ("Validation", "LISTE", "A_VALIDER | VALIDE"),
    ("Valide par", T, "")]),
  "CONTRAINTES_APPRO": ("Fournisseurs, délais et conditions d'achat.", [
@@ -137,20 +138,28 @@ SORTIE = {
    ("Libelle", T, ""), ("Statut", "LISTE", "BROUILLON | COURANTE | ARCHIVEE"),
    ("Date reunion S&OP", DT, ""), ("Version coefficients", E, "Cadençage utilisé"),
    ("Cree par", T, ""), ("Cree le", DT, ""), ("Verrouillee", B, "OUI après validation"), ("Commentaire", T, "")]),
- "PREVISION": ("Version courante. Une ligne par article, entité, plateforme et mois.", [
-   ("ID ligne", T, "campagne|entite|produit|plateforme|mois, composants encodés"),
-   ("Code produit", T, ""), ("Entite", T, ""), ("Plateforme", T, ""), ("Mois", T, "AAAA-MM"),
-   ("Qte historique corrigee N-1", D, "Unité de stock"), ("Qte statistique", D, ""), ("Tendance retenue", D, "% appliqué à l'historique N-1, choisi par le prévisionniste"),
+ "PREVISION": ("Version courante. Une ligne par article, entité et plateforme : le besoin sur l'horizon de la campagne. La répartition par semaine est calculée avec COEFFICIENTS et AJUSTEMENTS_SEMAINE.", [
+   ("ID ligne", T, "campagne|entite|produit|plateforme, composants encodés"),
+   ("Code produit", T, ""), ("Entite", T, ""), ("Plateforme", T, ""),
+   ("Qte historique corrigee N-1", D, "Unité de stock, sur l'horizon"), ("Qte statistique", D, "Moyenne pondérée et lissage exponentiel"),
+   ("Tendance retenue", D, "% appliqué à l'historique N-1, choisi par le prévisionniste"),
    ("Qte TC", D, ""), ("Qte evenements", D, "Polco, promo, réglementaire"),
-   ("Qte correction", D, ""), ("Qte arbitree", D, "Demande, comme si l'article était disponible"), ("Qte validee", D, ""), ("Qte reelle attendue", D, "Après ruptures déclarées dans RUPTURES. Vide si aucune"),
+   ("Qte correction", D, ""), ("Qte arbitree", D, "Demande, comme si l'article était disponible"), ("Qte validee", D, ""),
+   ("Qte reelle attendue", D, "Après ruptures déclarées dans RUPTURES. Vide si aucune"),
    ("Unite stock", T, ""), ("Poids article", D, "Copié du référentiel"),
    ("Statut", "LISTE", "PREV_TC | ARBITREE | VALIDEE"), ("Version", T, "ID version courante"),
-   ("Modifie par", T, ""), ("Modifie le", DT, "")]),
- "INSTANTANES": ("Photo de la quantité retenue à chaque figement de version. Permet de comparer les reprévisions.", [
+   ("Version coefficients", E, "Cadençage appliqué"), ("Modifie par", T, ""), ("Modifie le", DT, "")]),
+ "AJUSTEMENTS_SEMAINE": ("Exceptions à la répartition normale : une correction ou un événement sur certaines semaines. Ajouts uniquement, jamais de suppression.", [
+   ("ID ajustement", T, ""), ("Code produit", T, "Vide = tout le marché"), ("Marche", T, ""), ("Entite", T, ""), ("Plateforme", T, "* = toutes"),
+   ("Semaine debut", T, "AAAA-Sss"), ("Semaine fin", T, "AAAA-Sss"),
+   ("Type", "LISTE", "CORRECTION | DEPLACEMENT | EVENEMENT"),
+   ("Quantite", D, "Unité de stock, ajoutée sur la période"), ("Pourcent", D, "Alternative à la quantité"),
+   ("Motif", T, ""), ("Statut", "LISTE", "ACTIF | ANNULE"), ("Cree par", T, ""), ("Cree le", DT, ""), ("Annule par", T, ""), ("Annule le", DT, "")]),
+ "INSTANTANES": ("Photo de la quantité retenue à chaque figement de version (besoin sur l'horizon, une ligne par article, entité, plateforme). Permet de comparer les reprévisions.", [
    ("ID version", T, ""), ("ID ligne", T, ""), ("Qte retenue", D, "Arbitrée ou validée selon le type de version")]),
  "CORRECTIONS_HISTO": ("Corrections de l'historique. Le brut n'est jamais écrasé.", [
    ("ID correction", T, ""), ("Code produit", T, ""), ("Entite", T, ""), ("Plateforme", T, "* = toutes"),
-   ("Mois debut", T, "AAAA-MM"), ("Mois fin", T, "AAAA-MM"),
+   ("Semaine debut", T, "AAAA-Sss"), ("Semaine fin", T, "AAAA-Sss"),
    ("Type", "LISTE", "RUPTURE | ANOMALIE | EVENEMENT | SUBSTITUTION | APPRO_FOURNISSEUR"),
    ("Qte brute", D, "Ce qui a été vendu"), ("Qte corrigee", D, "Demande estimée sans la cause"), ("Methode estimation", "LISTE", "SEMAINES_COMPARABLES | MOYENNE | MANUELLE"), ("Motif", T, ""), ("Commentaire", T, ""),
    ("Statut", "LISTE", "ACTIVE | ANNULEE"), ("Cree par", T, ""), ("Cree le", DT, ""),
@@ -158,7 +167,7 @@ SORTIE = {
  "EVENEMENTS_COMMERCE": ("Apports du commerce à la prévision : polco, promotions, grands comptes, appels d'offres, réglementaire.", [
    ("ID evenement", T, ""), ("Type", "LISTE", "POLCO | PROMO | GRAND_COMPTE | APPEL_OFFRES | REGLEMENTAIRE"),
    ("Code produit", T, "Vide = tout le marché"), ("Marche", T, ""), ("Entite", T, ""),
-   ("Territoire TC", T, "* = tous"), ("Mois debut", T, ""), ("Mois fin", T, ""),
+   ("Territoire TC", T, "* = tous"), ("Semaine debut", T, "AAAA-Sss"), ("Semaine fin", T, "AAAA-Sss"),
    ("Impact quantite", D, ""), ("Impact pourcent", D, "Un des deux impacts"),
    ("Commentaire", T, ""), ("Saisi par", T, ""), ("Saisi le", DT, ""), ("Actif", B, "")]),
  "STOCKS_PROJETES": ("Projection hebdomadaire du stock par article et plateforme, version et scénario courants. Une ligne par mouvement.", [
@@ -166,8 +175,8 @@ SORTIE = {
    ("Mouvement", "LISTE", "STOCK_DEBUT | ACHATS | BESOIN_REAPPRO | RETOURS_MAGASINS | TRANSFERT_ENTRANT | VENTES_PREV | VENTES_PERDUES | REPORT_VENTES | STOCK_FIN"),
    ("Quantite", D, "Unité de stock"), ("Origine", T, "Ex. plateforme du transfert, article du report, motif"),
    ("Alerte", "LISTE", "AUCUNE | RUPTURE | SURSTOCK | SATURATION")]),
- "FIABILITE": ("Écart entre prévu et réalisé, calculé à chaque clôture de mois.", [
-   ("ID campagne", T, ""), ("Mois", T, ""), ("Niveau", "LISTE", "MARCHE | PLATEFORME | GROUPE | ARTICLE | TERRITOIRE | BASSIN"),
+ "FIABILITE": ("Écart entre prévu et réalisé, calculé à chaque clôture de semaine. Les mois s'obtiennent par agrégation.", [
+   ("ID campagne", T, ""), ("Semaine", T, "AAAA-Sss"), ("Niveau", "LISTE", "MARCHE | PLATEFORME | GROUPE | ARTICLE | TERRITOIRE | BASSIN"),
    ("Cle niveau", T, ""), ("Version evaluee", T, ""), ("Prevu T", D, ""), ("Realise T", D, ""),
    ("Ecart T", D, ""), ("Ecart pourcent", D, ""), ("Biais pourcent", D, "Signé, positif = sur-prévision")]),
  "RUPTURES": ("Ruptures constatées ou prévues, et ce que deviennent les ventes. Permet de lire la demande et le réel en parallèle.", [

@@ -42,7 +42,7 @@ Les autres applications (ordonnancement des commandes, EurePrev) ne lisent que l
 | ACCES_PAC | ACCES | Ajout de Marche, Plateforme |
 | PRODUITS_PAC (par campagne) | PRODUITS (permanent) + GAMME (par campagne) | Poids article et densité pour passer en tonnes |
 | PLATEFORMES | AFFECTATION_PLATEFORME + PLATEFORMES | La liste des lieux de stockage devient un onglet à part |
-| MENSUALISATION | COEFFICIENTS | Niveaux marché, famille, article, plateforme ; mois puis semaine du mois |
+| MENSUALISATION | COEFFICIENTS | Cadençage **à la semaine** (semaine ISO) ; niveaux marché, famille, article, plateforme |
 | SOURCES, ARBITRAGES | SOURCES, ARBITRAGES | SOURCES décrit aussi la nature du flux et son responsable |
 | DONNEES, JOURNAL, OPERATIONS | PREVISION, JOURNAL, OPERATIONS | Même logique : verrou, reçus, auteur réel |
 
@@ -71,7 +71,7 @@ Une version validée est verrouillée. Le fichier `BUDGET` étant sensible, l'ap
 
 Les onglets `PUBLICATION_MENSUELLE` et `PUBLICATION_HEBDO` sont les seuls que les autres applications ont le droit de lire. Ils sont réécrits entièrement à chaque validation de version. `CONTRAT` décrit chaque colonne et porte un numéro de version. Une évolution du schéma incrémente ce numéro, ce qui évite de casser l'ordonnancement sans le prévenir.
 
-- **Mensuel :** article × entité × plateforme × mois, sur l'horizon de la campagne.
+- **Mensuel :** article × entité × plateforme × mois, sur l'horizon de la campagne (somme des semaines).
 - **Hebdomadaire :** même grain, sur l'horizon du suivi de stock actuel (78 semaines par défaut, réglable). Il ne porte que sur les articles suivis en stock, quelques dizaines par plateforme.
 
 ## 6. Le suivi de stock (modèle observé dans vos fichiers)
@@ -116,24 +116,28 @@ Les lignes « Ventes prévisionnelles ONA » du suivi deviennent une ligne VENTE
 
 Un classeur Google Sheets est limité à 10 millions de cellules. EurePrev en utilise déjà environ 6,9 millions pour 175 745 lignes.
 
-Estimation à confirmer avec les vraies données. Hypothèses : 1 500 articles actifs avec 3 plateformes en moyenne pour la prévision mensuelle ; 80 articles suivis en stock sur 3 plateformes pour le suivi hebdomadaire, sur 78 semaines et 8 mouvements.
+Le cadençage est hebdomadaire, mais la prévision n'est **pas** stockée à la semaine : on stocke le besoin sur l'horizon de la campagne par article, entité et plateforme, et l'application le répartit par semaine avec `COEFFICIENTS` et `AJUSTEMENTS_SEMAINE`. Stocker 234 000 lignes hebdomadaires dans PREVISION, plus des photos par version, dépasserait la limite.
+
+Estimation à confirmer avec les vraies données. Hypothèses : 1 500 articles actifs avec 3 plateformes en moyenne ; 80 articles suivis en stock sur 3 plateformes, sur 78 semaines et 9 mouvements ; 8 versions.
 
 | Onglet | Lignes | Colonnes | Cellules |
 |---|---|---|---|
-| PREVISION | 54 000 | 19 | ≈ 1,0 M |
-| INSTANTANES (8 versions) | 432 000 | 3 | ≈ 1,3 M |
-| PUBLICATION_MENSUELLE | 54 000 | 11 | ≈ 0,6 M |
-| PUBLICATION_HEBDO | 18 700 | 11 | ≈ 0,2 M |
-| STOCKS_PROJETES (version courante) | 150 000 | 9 | ≈ 1,4 M |
-| **Total SORTIE_SOP** | | | **≈ 4,5 M** |
+| PREVISION | 4 500 | 20 | ≈ 0,1 M |
+| INSTANTANES (8 versions) | 36 000 | 3 | ≈ 0,1 M |
+| PUBLICATION_MENSUELLE (tous articles) | 54 000 | 14 | ≈ 0,8 M |
+| PUBLICATION_HEBDO (articles suivis) | 18 700 | 14 | ≈ 0,3 M |
+| STOCKS_PROJETES (version courante) | 170 000 | 10 | ≈ 1,7 M |
+| **Total SORTIE_SOP** | | | **≈ 3,0 M** |
 
-C'est confortable. Le point sensible est `VENTES_HEBDO` : l'export actuel est à la ligne facturée, il doit être agrégé par semaine, article et point avant dépôt. Les ventes restent en **un fichier par année civile**.
+Si vous voulez publier **tous** les articles à la semaine (réglage `PUBLICATION_HEBDO_TOUS`), ajoutez environ 5 M de cellules : à décider avec l'ordonnancement.
+
+Le point sensible reste `VENTES_HEBDO` : l'export actuel est à la ligne facturée, il doit être agrégé par semaine, article et point avant dépôt. Les ventes restent en **un fichier par année civile**.
 
 ## 8. Points à valider avant de créer les fichiers
 
 1. **Poids article :** disponible dans un Google Sheet (réponse reçue). Il est déclaré dans SOURCES avec la nature `POIDS_ARTICLE` et copié dans PRODUITS. Reste à fournir le lien et ses colonnes.
 2. **Rattachement semaine → mois :** mois du jeudi de la semaine (validé).
-3. **Grain de la prévision :** article × plateforme × mois (validé) pour le comité. Vos fichiers sont hebdomadaires : le stockage et la publication à la semaine sont proposés et restent à valider. La prévision des TC est annuelle par TC et article ; le passage au mois et à la plateforme se fait via AFFECTATION_PLATEFORME et COEFFICIENTS.
+3. **Cadençage (validé) :** à la semaine. Le besoin est stocké par article, entité et plateforme sur l'horizon, réparti par semaine par l'application. Le comité lit les mois en additionnant les semaines (mois du jeudi). Reste à choisir la pondération des années et le lissage (REGLAGES, valeurs de départ proposées). La prévision des TC est annuelle par TC et article ; le passage au mois et à la plateforme se fait via AFFECTATION_PLATEFORME et COEFFICIENTS.
 4. **Qui définit les coefficients :** à décider (réponse reportée). L'onglet prévoit `Valide par` et un numéro de version.
 5. **Rôles (validés) :** ADMIN, PREV, RM, AM, RT, CD, RBP, TC, SUPPLY. Le contrôle de gestion et la direction n'ont pas de rôle : ils reçoivent les exports du comité. Reste à confirmer ce que peut corriger chaque rôle.
 6. **Fichier d'ordonnancement :** quand l'application d'ordonnancement existera, ses colonnes de lecture sont à ajouter à `CONTRAT`.
@@ -177,7 +181,7 @@ Clé / valeur. Réglages globaux de l'application.
 
 | Colonne | Type | Règle ou exemple |
 |---|---|---|
-| Cle | TEXTE | DOMAINES, UNITE_PIVOT, SEUIL_ECART_N1, COUVERTURE_MIN_MOIS, COUVERTURE_MAX_MOIS, HORIZON_HEBDO_SEMAINES, PRECISION_QTE, PRECISION_TONNES, MAX_LOT, VERSION_REFERENTIEL, RATTACHEMENT_SEMAINE |
+| Cle | TEXTE | DOMAINES, UNITE_PIVOT, SEUIL_ECART_N1, COUVERTURE_MIN_MOIS, COUVERTURE_MAX_MOIS, HORIZON_HEBDO_SEMAINES, PONDERATION_ANNEES, ALPHA_LISSAGE, PUBLICATION_HEBDO_TOUS, PRECISION_QTE, PRECISION_TONNES, MAX_LOT, VERSION_REFERENTIEL, RATTACHEMENT_SEMAINE |
 | Valeur | TEXTE |  |
 | Commentaire | TEXTE |  |
 
@@ -364,7 +368,7 @@ Semaines, mois et campagnes. Évite les calculs de dates dans l'application.
 | Type campagne | TEXTE | PAC1 à PAC4 ou MORTE_SAISON |
 
 ### COEFFICIENTS
-Cadençage : répartition d'un besoin annuel en mois, puis en semaines du mois.
+Cadençage : répartition du besoin annuel sur les semaines. Les mois du comité s'obtiennent en additionnant les semaines.
 
 | Colonne | Type | Règle ou exemple |
 |---|---|---|
@@ -372,10 +376,9 @@ Cadençage : répartition d'un besoin annuel en mois, puis en semaines du mois.
 | Niveau | LISTE | MARCHE | FAMILLE | ARTICLE | PLATEFORME |
 | Cle niveau | TEXTE | Valeur du niveau, ex. marché ENGRAIS |
 | Plateforme | TEXTE | * = toutes |
-| Granularite | LISTE | MOIS | SEMAINE_DU_MOIS |
-| Periode | ENTIER | 1 à 12, ou 1 à 5 |
-| Coefficient | DECIMAL | En %. Somme = 100 par ensemble |
-| Origine | LISTE | HISTORIQUE | MANUEL |
+| Semaine | ENTIER | Numéro de semaine ISO, 1 à 53 |
+| Coefficient | DECIMAL | En % du besoin annuel. Somme = 100 par ensemble Niveau, Cle niveau, Plateforme |
+| Origine | LISTE | HISTORIQUE | BUDGET | MANUEL |
 | Version coefficients | ENTIER | Incrémentée à chaque modification |
 | Validation | LISTE | A_VALIDER | VALIDE |
 | Valide par | TEXTE |  |
@@ -563,17 +566,16 @@ Catalogue des versions de la campagne. Une version = un jeu complet de prévisio
 | Commentaire | TEXTE |  |
 
 ### PREVISION
-Version courante. Une ligne par article, entité, plateforme et mois.
+Version courante. Une ligne par article, entité et plateforme : le besoin sur l'horizon de la campagne. La répartition par semaine est calculée avec COEFFICIENTS et AJUSTEMENTS_SEMAINE.
 
 | Colonne | Type | Règle ou exemple |
 |---|---|---|
-| ID ligne | TEXTE | campagne|entite|produit|plateforme|mois, composants encodés |
+| ID ligne | TEXTE | campagne|entite|produit|plateforme, composants encodés |
 | Code produit | TEXTE |  |
 | Entite | TEXTE |  |
 | Plateforme | TEXTE |  |
-| Mois | TEXTE | AAAA-MM |
-| Qte historique corrigee N-1 | DECIMAL | Unité de stock |
-| Qte statistique | DECIMAL |  |
+| Qte historique corrigee N-1 | DECIMAL | Unité de stock, sur l'horizon |
+| Qte statistique | DECIMAL | Moyenne pondérée et lissage exponentiel |
 | Tendance retenue | DECIMAL | % appliqué à l'historique N-1, choisi par le prévisionniste |
 | Qte TC | DECIMAL |  |
 | Qte evenements | DECIMAL | Polco, promo, réglementaire |
@@ -585,11 +587,34 @@ Version courante. Une ligne par article, entité, plateforme et mois.
 | Poids article | DECIMAL | Copié du référentiel |
 | Statut | LISTE | PREV_TC | ARBITREE | VALIDEE |
 | Version | TEXTE | ID version courante |
+| Version coefficients | ENTIER | Cadençage appliqué |
 | Modifie par | TEXTE |  |
 | Modifie le | DATE |  |
 
+### AJUSTEMENTS_SEMAINE
+Exceptions à la répartition normale : une correction ou un événement sur certaines semaines. Ajouts uniquement, jamais de suppression.
+
+| Colonne | Type | Règle ou exemple |
+|---|---|---|
+| ID ajustement | TEXTE |  |
+| Code produit | TEXTE | Vide = tout le marché |
+| Marche | TEXTE |  |
+| Entite | TEXTE |  |
+| Plateforme | TEXTE | * = toutes |
+| Semaine debut | TEXTE | AAAA-Sss |
+| Semaine fin | TEXTE | AAAA-Sss |
+| Type | LISTE | CORRECTION | DEPLACEMENT | EVENEMENT |
+| Quantite | DECIMAL | Unité de stock, ajoutée sur la période |
+| Pourcent | DECIMAL | Alternative à la quantité |
+| Motif | TEXTE |  |
+| Statut | LISTE | ACTIF | ANNULE |
+| Cree par | TEXTE |  |
+| Cree le | DATE |  |
+| Annule par | TEXTE |  |
+| Annule le | DATE |  |
+
 ### INSTANTANES
-Photo de la quantité retenue à chaque figement de version. Permet de comparer les reprévisions.
+Photo de la quantité retenue à chaque figement de version (besoin sur l'horizon, une ligne par article, entité, plateforme). Permet de comparer les reprévisions.
 
 | Colonne | Type | Règle ou exemple |
 |---|---|---|
@@ -606,8 +631,8 @@ Corrections de l'historique. Le brut n'est jamais écrasé.
 | Code produit | TEXTE |  |
 | Entite | TEXTE |  |
 | Plateforme | TEXTE | * = toutes |
-| Mois debut | TEXTE | AAAA-MM |
-| Mois fin | TEXTE | AAAA-MM |
+| Semaine debut | TEXTE | AAAA-Sss |
+| Semaine fin | TEXTE | AAAA-Sss |
 | Type | LISTE | RUPTURE | ANOMALIE | EVENEMENT | SUBSTITUTION | APPRO_FOURNISSEUR |
 | Qte brute | DECIMAL | Ce qui a été vendu |
 | Qte corrigee | DECIMAL | Demande estimée sans la cause |
@@ -631,8 +656,8 @@ Apports du commerce à la prévision : polco, promotions, grands comptes, appels
 | Marche | TEXTE |  |
 | Entite | TEXTE |  |
 | Territoire TC | TEXTE | * = tous |
-| Mois debut | TEXTE |  |
-| Mois fin | TEXTE |  |
+| Semaine debut | TEXTE | AAAA-Sss |
+| Semaine fin | TEXTE | AAAA-Sss |
 | Impact quantite | DECIMAL |  |
 | Impact pourcent | DECIMAL | Un des deux impacts |
 | Commentaire | TEXTE |  |
@@ -657,12 +682,12 @@ Projection hebdomadaire du stock par article et plateforme, version et scénario
 | Alerte | LISTE | AUCUNE | RUPTURE | SURSTOCK | SATURATION |
 
 ### FIABILITE
-Écart entre prévu et réalisé, calculé à chaque clôture de mois.
+Écart entre prévu et réalisé, calculé à chaque clôture de semaine. Les mois s'obtiennent par agrégation.
 
 | Colonne | Type | Règle ou exemple |
 |---|---|---|
 | ID campagne | TEXTE |  |
-| Mois | TEXTE |  |
+| Semaine | TEXTE | AAAA-Sss |
 | Niveau | LISTE | MARCHE | PLATEFORME | GROUPE | ARTICLE | TERRITOIRE | BASSIN |
 | Cle niveau | TEXTE |  |
 | Version evaluee | TEXTE |  |

@@ -100,7 +100,7 @@ td input.cell.changed{border-color:var(--eureden-olive);background:var(--eureden
 .vt li.last::before{background:var(--eureden-jaune);border-color:#000}
 .bar{height:10px;border-radius:5px;background:var(--eureden-gris-clair);overflow:hidden;min-width:90px}
 .bar span{display:block;height:100%;background:var(--eureden-vert)}
-.view{display:none}.view.on{display:block}
+.wk-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(78px,1fr));gap:8px}.wk-grid label{display:flex;flex-direction:column;gap:2px;font-size:11px;font-weight:700}.wk-grid input{width:100%;border:1px solid var(--eureden-gris);border-radius:5px;padding:4px 6px;text-align:right;font-variant-numeric:tabular-nums}.wk-grid input.changed{border-color:var(--eureden-olive);background:var(--eureden-jaune-pale);font-weight:800}.view{display:none}.view.on{display:block}
 .note{font-size:12px;color:var(--eureden-gris-fonce)}
 dialog{border:0;border-radius:10px;padding:20px 22px;box-shadow:0 8px 30px rgba(0,0,0,.3);max-width:460px;width:92vw;font-family:inherit;color:var(--eureden-gris-fonce)}
 dialog::backdrop{background:rgba(0,0,0,.4)}
@@ -191,19 +191,20 @@ dialog select,dialog textarea{width:100%;border:1px solid var(--eureden-gris);bo
 <!-- ============ CADENCEMENT ============ -->
 <section class="view" id="v-cad">
   <h1>Cadençage</h1>
-  <p class="sub">Répartition du besoin annuel sur les mois, puis sur les semaines.</p>
+  <p class="sub">Répartition du besoin annuel sur les semaines (semaines ISO). Les mois du comité s'obtiennent en additionnant les semaines.</p>
   <div class="chips">
     <label class="ctl">Marché<select id="cad-m"></select></label>
     <label class="ctl">Maille des coefficients<select><option>Par marché</option><option>Par plateforme</option><option>Par article</option></select></label>
     <label class="ctl">Besoin annuel (T)<input id="cad-t" type="number" value="12600" step="100"></label>
   </div>
   <div class="grid g2">
-    <div class="card"><h2>Coefficients mensuels <small>historique 3 ans vs retenu</small></h2><div id="ch-cad"></div>
-      <div class="legend"><span><i style="background:#BAD264"></i>Moyenne historique</span><span><i style="background:#514F21"></i>Coefficient retenu</span></div>
+    <div class="card"><h2>Coefficients hebdomadaires <small>historique pondéré vs retenu, 2027</small></h2><div id="ch-cad"></div>
+      <div class="legend"><span><i style="background:#BAD264"></i>Historique pondéré 3 ans</span><span><i style="background:#514F21"></i>Coefficient retenu</span></div>
       <div class="row" style="margin-top:10px"><span id="cad-sum" class="pill p-ok">Total 100 %</span><button class="btn" id="cad-reset">Reprendre l'historique</button></div></div>
-    <div class="card"><h2>Résultat <small>tonnes</small></h2><div><table id="t-cad"></table></div>
-      <p class="note">Mise à jour des coefficients : à définir (responsable à confirmer). Chaque changement crée une version.</p></div>
+    <div class="card"><h2>Lecture par mois <small>somme des semaines, mois du jeudi</small></h2><div class="scroll" style="max-height:none"><table id="t-cad"></table></div>
+      <p class="note">Mise à jour des coefficients : responsable à définir. Chaque changement crée une version.</p></div>
   </div>
+  <div class="card" style="margin-top:16px"><h2>Coefficient par semaine <small>en % du besoin annuel</small></h2><div id="cad-grid" class="wk-grid"></div></div>
 </section>
 
 <!-- ============ STOCKS ============ -->
@@ -399,19 +400,29 @@ $('#t-sub').innerHTML=`<thead><tr><th>Article remplacé</th><th></th><th>Rempla�
  SUB.map((s,i)=>`<tr><td>${s[0]}</td><td aria-hidden="true">→</td><td><b>${s[1]}</b></td>
  <td><label><input type="checkbox" ${s[2]?'checked':''}> Oui</label></td><td><label><input type="checkbox" ${s[3]?'checked':''}> Oui</label></td><td>${['Phytosanitaires','Engrais','Phytosanitaires','Semences'][i]}</td></tr>`).join('')+'</tbody>';
 
-/* ---------- cadençage ---------- */
-const HIST={Engrais:[3,5,13,15,9,5,4,8,15,14,6,3],'Nutrition végétale':[2,4,10,14,15,12,6,5,10,10,8,4],Phytosanitaires:[2,4,10,16,18,12,7,6,10,8,5,2],Semences:[1,2,6,8,6,3,3,20,30,14,5,2],Biocontrôle:[1,2,8,12,15,14,10,8,12,9,6,3]};
-let coef=[...HIST.Engrais];
+/* ---------- cadençage hebdomadaire ---------- */
+const HISTM={Engrais:[3,5,13,15,9,5,4,8,15,14,6,3],'Nutrition végétale':[2,4,10,14,15,12,6,5,10,10,8,4],Phytosanitaires:[2,4,10,16,18,12,7,6,10,8,5,2],Semences:[1,2,6,8,6,3,3,20,30,14,5,2],Biocontrôle:[1,2,8,12,15,14,10,8,12,9,6,3]};
+const NW=52, WMONTH=Array.from({length:NW},(_,w)=>new Date(Date.UTC(2027,0,7+7*w)).getUTCMonth()); // mois du jeudi, ISO 2027
+function histWeekly(m){const out=Array(NW).fill(0);
+  for(let mo=0;mo<12;mo++){const ws=[...Array(NW).keys()].filter(w=>WMONTH[w]===mo),wt=ws.map(w=>1+.25*Math.sin(w*1.7)),sw=wt.reduce((a,b)=>a+b,0);ws.forEach((w,i)=>out[w]=HISTM[m][mo]*wt[i]/sw);}
+  const r=out.map(v=>Math.round(v*100)/100),d=100-r.reduce((a,b)=>a+b,0);const k=r.indexOf(Math.max(...r));r[k]=Math.round((r[k]+d)*100)/100;return r;}
+let coef=histWeekly('Engrais');
+const f2=v=>(Math.round(v*100)/100).toLocaleString('fr-FR',{minimumFractionDigits:2,maximumFractionDigits:2});
 $('#cad-m').innerHTML=MARCHES.map(m=>`<option>${m}</option>`).join('');
-$('#cad-m').onchange=()=>{coef=[...HIST[$('#cad-m').value]];renderCad();};$('#cad-reset').onclick=()=>{coef=[...HIST[$('#cad-m').value]];renderCad();};$('#cad-t').oninput=renderCad;
-function renderCad(){const m=$('#cad-m').value,h=HIST[m],T=+$('#cad-t').value||0,w=620,H=230,pl=36,pb=26,pt=10,max=40,bw=(w-pl)/12,y=v=>pt+(H-pt-pb)*(1-v/max);
-  let s=`<svg viewBox="0 0 ${w} ${H}" width="100%" role="img" aria-label="Coefficients mensuels">`;
-  for(let i=0;i<=4;i++){const v=max*i/4;s+=`<line x1="${pl}" x2="${w}" y1="${y(v)}" y2="${y(v)}" stroke="#e3e3e3"/><text x="${pl-5}" y="${y(v)+4}" font-size="10" text-anchor="end">${v} %</text>`;}
-  MOIS.forEach((mo,i)=>{const x=pl+i*bw;s+=`<rect x="${x+bw*.12}" y="${y(h[i])}" width="${bw*.35}" height="${H-pb-y(h[i])}" fill="#BAD264"/><rect x="${x+bw*.52}" y="${y(coef[i])}" width="${bw*.35}" height="${H-pb-y(coef[i])}" fill="#514F21"/><text x="${x+bw/2}" y="${H-8}" font-size="10" text-anchor="middle">${mo}</text>`;});
+$('#cad-m').onchange=()=>{coef=histWeekly($('#cad-m').value);renderCad();};$('#cad-reset').onclick=()=>{coef=histWeekly($('#cad-m').value);renderCad();};$('#cad-t').oninput=renderCad;
+function renderCad(){const m=$('#cad-m').value,h=histWeekly(m),T=+$('#cad-t').value||0,w=620,H=240,pl=36,pb=34,pt=16,max=Math.ceil(Math.max(...h,...coef)*1.15),bw=(w-pl)/NW,y=v=>pt+(H-pt-pb)*(1-v/max);
+  let s=`<svg viewBox="0 0 ${w} ${H}" width="100%" role="img" aria-label="Coefficients hebdomadaires">`;
+  for(let mo=0;mo<12;mo++){const ws=[...Array(NW).keys()].filter(i=>WMONTH[i]===mo);if(!ws.length)continue;const x0=pl+ws[0]*bw,x1=pl+(ws[ws.length-1]+1)*bw;
+    if(mo%2===0)s+=`<rect x="${x0}" y="${pt}" width="${x1-x0}" height="${H-pt-pb}" fill="#F0F0F0"/>`;s+=`<text x="${(x0+x1)/2}" y="${H-6}" font-size="10" text-anchor="middle" fill="#444">${MOIS[mo]}</text>`;}
+  for(let i=0;i<=4;i++){const v=max*i/4;s+=`<line x1="${pl}" x2="${w}" y1="${y(v)}" y2="${y(v)}" stroke="#e3e3e3"/><text x="${pl-5}" y="${y(v)+4}" font-size="10" text-anchor="end" fill="#444">${f2(v).replace(',00','')} %</text>`;}
+  for(let i=0;i<NW;i++){const x=pl+i*bw;s+=`<rect x="${x+bw*.08}" y="${y(h[i])}" width="${bw*.4}" height="${Math.max(0,H-pb-y(h[i]))}" fill="#BAD264"/><rect x="${x+bw*.5}" y="${y(coef[i])}" width="${bw*.4}" height="${Math.max(0,H-pb-y(coef[i]))}" fill="#514F21"/>`;
+    if(i%4===0)s+=`<text x="${x+bw/2}" y="${H-20}" font-size="9" text-anchor="middle" fill="#444">S${i+1}</text>`;}
   $('#ch-cad').innerHTML=s+'</svg>';
-  const tot=coef.reduce((a,b)=>a+b,0);$('#cad-sum').className='pill '+(tot===100?'p-ok':'p-bad');$('#cad-sum').innerHTML=(tot===100?'✓ ':'✖ ')+`Total ${tot} %`+(tot===100?'':' – doit faire 100 %');
-  $('#t-cad').innerHTML=`<thead><tr><th>Mois</th><th class="n">Coef. historique</th><th class="n">Coef. retenu</th><th class="n">Volume</th></tr></thead><tbody>`+MOIS.map((mo,i)=>`<tr><td>${mo}</td><td class="n">${h[i]} %</td><td class="n"><input class="cell${coef[i]!==h[i]?' changed':''}" type="number" value="${coef[i]}" data-i="${i}" aria-label="Coefficient ${mo}" style="width:64px"> %</td><td class="n">${fAgg(T*coef[i]/100)}</td></tr>`).join('')+`<tr class="tot"><td>Total</td><td class="n">100 %</td><td class="n">${tot} %</td><td class="n">${fAgg(T*tot/100)}</td></tr></tbody>`;
-  $$('#t-cad input').forEach(i=>i.onchange=()=>{coef[+i.dataset.i]=+i.value||0;renderCad();});}
+  const tot=coef.reduce((a,b)=>a+b,0),ok=Math.abs(tot-100)<.05;$('#cad-sum').className='pill '+(ok?'p-ok':'p-bad');$('#cad-sum').innerHTML=(ok?'✓ ':'✖ ')+`Total ${f2(tot)} %`+(ok?'':' – doit faire 100 %');
+  const mh=Array(12).fill(0),mc=Array(12).fill(0),mw=Array(12).fill(0);for(let i=0;i<NW;i++){mh[WMONTH[i]]+=h[i];mc[WMONTH[i]]+=coef[i];mw[WMONTH[i]]++;}
+  $('#t-cad').innerHTML=`<thead><tr><th>Mois</th><th class="n">Semaines</th><th class="n">Historique</th><th class="n">Retenu</th><th class="n">Volume</th></tr></thead><tbody>`+MOIS.map((mo,i)=>`<tr><td>${mo}</td><td class="n">${mw[i]}</td><td class="n">${f2(mh[i])} %</td><td class="n"><b>${f2(mc[i])} %</b></td><td class="n">${fAgg(T*mc[i]/100)}</td></tr>`).join('')+`<tr class="tot"><td>Total</td><td class="n">${NW}</td><td class="n">100,00 %</td><td class="n">${f2(tot)} %</td><td class="n">${fAgg(T*tot/100)}</td></tr></tbody>`;
+  $('#cad-grid').innerHTML=coef.map((c,i)=>`<label>S${i+1}<input type="number" step="0.05" min="0" value="${c}" class="${Math.abs(c-h[i])>.004?'changed':''}" data-i="${i}" aria-label="Coefficient semaine ${i+1}"></label>`).join('');
+  $$('#cad-grid input').forEach(inp=>inp.onchange=()=>{coef[+inp.dataset.i]=Math.max(0,+inp.value||0);renderCad();});}
 
 /* ---------- stocks ---------- */
 const SP={Glomel:{s0:2300,cap:3200,min:600,dl:2200,res:[420,380,350,420,520,610,700,720,640,520,430,380,350,330,320,330,350,390,430,480,520,490,460,420,380,350],liv:[3,8,13,17,22]},
