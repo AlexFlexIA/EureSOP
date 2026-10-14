@@ -190,8 +190,15 @@
   }
 
   // ---------- Prévision statistique ----------
+  // Année prévue (campagne) et année de référence (la précédente). Vides si la campagne n'a pas d'année de prévision.
+  function anneesPrevision() {
+    var a = etat.session.campagne.anneePrevision;
+    return { prevue: a ? String(a) : '', reference: a ? String(a - 1) : '' };
+  }
+
   function ecranPrevision() {
-    return '<h1>Prévision statistique</h1><p class="sub">Moyenne pondérée des années d\'historique du PAC, par article et par entité. C\'est le point de départ du comité.</p>' +
+    var y = anneesPrevision();
+    return '<h1>Prévision statistique' + (y.prevue ? ' ' + esc(y.prevue) : '') + '</h1><p class="sub">Moyenne pondérée des années d\'historique du PAC, par article et par entité' + (y.prevue ? ', pour prévoir ' + esc(y.prevue) : '') + '. C\'est le point de départ du comité, à comparer ensuite à la saisie des TC.</p>' +
       '<div id="p-contenu"><div class="carte">Chargement…</div></div>';
   }
 
@@ -211,7 +218,7 @@
     var v = d.version;
     var entete = '<div class="carte"><h2>Version courante</h2><ul class="liste"><li><b>' + esc(v.id) + '</b> ' + pastille('p-marque', '●', v.type) + (v.verrouillee ? ' ' + pastille('p-marque', '■', 'Verrouillée') : '') + '</li>' +
       '<li>' + esc(v.libelle) + '</li><li class="note">Créée le ' + esc(v.creeLe.replace('T', ' ')) + ' par ' + esc(v.creePar) + '</li></ul>' + action + '</div>';
-    var tot = '<div class="carte"><h2>Totaux par entité</h2><div class="tableau"><table><thead><tr><th>Entité</th><th>Articles</th><th>Quantité année précédente</th><th>Quantité statistique</th><th>Écart</th></tr></thead><tbody>' +
+    var tot = '<div class="carte"><h2>Totaux par entité</h2><div class="tableau"><table><thead><tr><th>Entité</th><th>Articles</th><th>Réalisé ' + esc(anneesPrevision().reference || 'année précédente') + '</th><th>Statistique ' + esc(anneesPrevision().prevue || '') + '</th><th>Écart</th></tr></thead><tbody>' +
       d.totaux.map(function (t) {
         return '<tr><td>' + esc(t.entite) + '</td><td class="n">' + n0(t.articles) + '</td><td class="n">' + n0(t.n1) + '</td><td class="n">' + n0(t.statistique) + '</td><td>' + variation(t.statistique, t.n1) + '</td></tr>';
       }).join('') + '</tbody></table></div><p class="note">La quantité additionne des unités de stock différentes (sacs, bidons, kg).</p></div>';
@@ -226,7 +233,7 @@
     function filtrer() {
       var e = $('#p-entite').value, q = $('#p-texte').value.trim().toLowerCase();
       var sel = d.articles.filter(function (a) { return (!e || a.entite === e) && (!q || a.code.toLowerCase().indexOf(q) >= 0 || a.libelle.toLowerCase().indexOf(q) >= 0); });
-      $('#p-table').innerHTML = sel.length ? '<table><thead><tr><th>Code</th><th>Libellé</th><th>Entité</th><th>Année précédente</th><th>Statistique</th><th>Écart</th></tr></thead><tbody>' +
+      $('#p-table').innerHTML = sel.length ? '<table><thead><tr><th>Code</th><th>Libellé</th><th>Entité</th><th>Réalisé ' + esc(anneesPrevision().reference || 'année précédente') + '</th><th>Statistique ' + esc(anneesPrevision().prevue || '') + '</th><th>Écart</th></tr></thead><tbody>' +
         sel.slice(0, 200).map(function (a) {
           return '<tr><td>' + esc(a.code) + '</td><td>' + esc(a.libelle) + '</td><td>' + esc(a.entite) + '</td><td class="n">' + n0(a.n1) + '</td><td class="n">' + n0(a.statistique) + '</td><td>' + variation(a.statistique, a.n1) + '</td></tr>';
         }).join('') + '</tbody></table>' : '<p class="note">Aucun article ne correspond.</p>';

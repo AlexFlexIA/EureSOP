@@ -34,6 +34,7 @@ function apiDemarrage() {
         id: txt(a.campagne['ID campagne']),
         libelle: txt(a.campagne.Libelle),
         type: txt(a.campagne.Type),
+        anneePrevision: Number(a.campagne['Annee prevision']) || 0,
         statut: norm(a.campagne.Statut)
       },
       roles: a.roles.map(function (r) { return r.role; }),
