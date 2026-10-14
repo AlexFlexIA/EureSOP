@@ -28,7 +28,10 @@ function page() {
   env.ajouterClasseur('FICHIER_COMMANDES_00000001', { Commandes: [['Code produit', 'Code point', 'Date limite livraison', 'Quantite reste a livrer', 'Code fournisseur'], ['1109939', 'GLOMEL', '2027-02-08', 4000, 'F1']] });
   env.ajouterClasseur('FICHIER_EUREPREV_TC_0000001', { DONNEES: [['N° TC', 'Code technicien Appro/DTD', 'Code produit long Triskalia', '_Canal de distribution', 'Saisie pour prévisions Coop (Oui ou Non)', 'PREV 2027', 'PREV 2027 en QTE', 'PREV 2027 en SURFACE', 'Etat saisie'],
     [1, 102441, 1109939, 'Coop EUREDEN', 'OUI', '', 9000, '', 'SAISI'], [2, 199405, 1109939, 'Coop EUREDEN', 'OUI', '', 8000.5, '', 'SAISI'], [3, 111111, 1109939, 'Coop EUREDEN', 'OUI', '', '', '', 'NON_RENSEIGNE']] });
+  env.ajouterClasseur('FICHIER_BUDGET_0000000001', { Budget: [['Annee', 'Version budget', 'Mois', 'Code produit', 'Entite', 'Quantite', 'Valeur euro'],
+    [2027, 'V1', '2027-02', '1109939', 'Coop EUREDEN', 5000, 3000], [2027, 'V1', '2027-03', '1109939', 'Coop EUREDEN', 8000, 4800], [2027, 'V1', '2027-04', '1109939', 'Coop EUREDEN', 2000, 1200]] });
   env.semer('PARAM_FICHIER_TEST_00001', 'SOURCES', [
+    { 'ID source': 'BUD', Nature: 'BUDGET', 'ID fichier': 'FICHIER_BUDGET_0000000001', Onglet: 'Budget', 'Actif import': 'OUI', Sensible: 'OUI' },
     { 'ID source': 'TC', Nature: 'PREV_TC', 'ID fichier': 'FICHIER_EUREPREV_TC_0000001', Onglet: 'DONNEES', 'Actif import': 'OUI' },
     { 'ID source': 'STK', Nature: 'STOCKS', 'ID fichier': 'FICHIER_STOCKS_0000000001', Onglet: 'Stocks', 'Actif import': 'OUI' },
     { 'ID source': 'CMD', Nature: 'COMMANDES_FOURN', 'ID fichier': 'FICHIER_COMMANDES_00000001', Onglet: 'Commandes', 'Actif import': 'OUI' }]);
@@ -65,7 +68,7 @@ function page() {
       await p.waitForSelector('.kpi');
       const t = await texte('main');
       assert.ok(/Aucune prévision/.test(t));
-      assert.ok(/Budget/.test(t) && /Non connecté/.test(t));
+      assert.ok(/budget 2027/i.test(t) && /Cadençage requis/.test(t), 'le budget doit demander le cadençage pour comparer');
     });
     await etape('prévision : calcul de la statistique', async () => {
       await p.click('#menu [data-v=prevision]');
@@ -193,6 +196,13 @@ function page() {
       await p.click('#menu [data-v=dashboard]');
       await p.waitForSelector('main :text("Prévision mensuelle")');
       assert.ok(/févr\. 2027/.test(await texte('main')));
+      await p.waitForFunction(() => /budget 2027 \(V1\)/i.test(document.body.innerText));
+      const t = await texte('main');
+      assert.ok(/15\s000/.test(t), 'le budget des mois du cadençage doit apparaître');
+      assert.ok(/vs budget/i.test(t));
+      await p.click('#unites [data-u=H]');
+      assert.ok(/Pas d'hectares au budget/.test(await texte('main')));
+      await p.click('#unites [data-u=Q]');
     });
     await etape('stocks : ruptures prévues, besoins de réapprovisionnement, export', async () => {
       await p.click('#menu [data-v=stocks]');

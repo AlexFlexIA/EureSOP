@@ -59,6 +59,7 @@ var API_ = {
   republier: function (a, args) { return Publication.republier(a, args[0]); },
   stocks: function (a) { return Stocks.projeter(a); },
   actualiser: function (a) { Auth.requireCap(a, 'consultation'); return Cache.actualiser(); },
+  budget: function (a) { return Budget.synthese(a); },
   fiabiliteReelle: function (a) { return Previsions.fiabiliteReelle(a); },
   journal: function (a, args) { return Journal.lire(a, args[0]); },
   controles: function (a) { return Controles.run(a); },

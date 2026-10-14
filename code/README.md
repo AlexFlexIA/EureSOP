@@ -183,3 +183,9 @@ Sources déclarées dans SOURCES (ID fichier, Onglet, Actif import = OUI) :
 - **Quantité de départ de l'arbitrage** : réglage `BASE_ARBITRAGE` = `STATISTIQUE` (par défaut) ou `TC` (saisie des TC quand elle existe, sinon statistique). Les pourcentages de correction et les substitutions s'appliquent à cette quantité.
 - Un fichier TC illisible n'empêche jamais le calcul : un avertissement est affiché.
 - **Cache** (`Cache.gs`) : l'historique agrégé et la saisie des TC sont gardés 10 minutes dans le cache du script (entrées découpées sous 100 Ko). Le bouton « Actualiser » de l'en-tête force la relecture. Un cache indisponible ne change rien au résultat, seulement au temps de réponse.
+
+## Budget (v0.6.0)
+
+Source de nature `BUDGET` dans SOURCES (ID fichier, Onglet). Colonnes reconnues : `Annee`, `Version budget`, `Mois` (AAAA-MM), `Code produit`, `Entite`, `Quantite`, `Valeur euro` (quantité ou valeur au choix). Seul le budget de l'année de prévision est lu, dans la version du réglage `BUDGET_VERSION` (à défaut la dernière du fichier). Réservé au droit « Voir budget » ; seuls des totaux par mois et par entité sont renvoyés au navigateur.
+
+Le tableau de bord compare la prévision retenue au budget **des mois du cadençage** (indicateur, colonnes Budget et vs budget, courbe mensuelle). Il n'y a pas de budget en hectares. Sans cadençage, le budget attend pour être comparé.

@@ -6,7 +6,7 @@ const path = require('path');
 const vm = require('vm');
 
 const RACINE = path.resolve(__dirname, '..');
-const FICHIERS_CODE = ['Structure.gs', 'Config.gs', 'Cache.gs', 'Store.gs', 'Params.gs', 'Auth.gs', 'Journal.gs', 'Versions.gs', 'Histo.gs', 'Ajustements.gs', 'Cadencage.gs', 'PrevTC.gs', 'Stocks.gs', 'Publication.gs', 'Previsions.gs', 'Dashboard.gs', 'Sources.gs', 'Controles.gs', 'Setup.gs', 'Code.gs'];
+const FICHIERS_CODE = ['Structure.gs', 'Config.gs', 'Cache.gs', 'Store.gs', 'Params.gs', 'Auth.gs', 'Journal.gs', 'Versions.gs', 'Histo.gs', 'Ajustements.gs', 'Cadencage.gs', 'Budget.gs', 'PrevTC.gs', 'Stocks.gs', 'Publication.gs', 'Previsions.gs', 'Dashboard.gs', 'Sources.gs', 'Controles.gs', 'Setup.gs', 'Code.gs'];
 
 function enTetes(dossier, tab) {
   const ligne = fs.readFileSync(path.join(RACINE, 'modeles', dossier, tab + '.csv'), 'utf8').split('\n')[0].replace(/\r$/, '');

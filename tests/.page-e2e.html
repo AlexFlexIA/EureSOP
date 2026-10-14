@@ -55,6 +55,7 @@ h1 .acc{font-family:var(--eureden-police-accent);font-size:32px;font-weight:600;
 .g4{grid-template-columns:repeat(auto-fit,minmax(210px,1fr))}
 .g2{grid-template-columns:repeat(auto-fit,minmax(380px,1fr))}
 .g3{grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
+.g5{grid-template-columns:repeat(auto-fit,minmax(185px,1fr))}
 .card{background:#fff;border-radius:10px;padding:16px 18px;box-shadow:0 1px 2px rgba(0,0,0,.08);min-width:0;margin-bottom:16px}
 .grid > .card{margin-bottom:0}
 .card h2{margin:0 0 10px;font-size:15px;color:#000;font-weight:800}
@@ -425,15 +426,42 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
   var NOMS_MOIS = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
   var libMois = function (m) { var p = m.split('-'); return NOMS_MOIS[Number(p[1]) - 1] + ' ' + p[0]; };
 
-  function carteMensuelle(cad) {
+  function carteMensuelle(cad, bud) {
     if (!cad || !cad.mois || !cad.mois.length) return '';
     var cle = App.UNITES[App.etat.unite].cle, ent = App.etat.entite;
     var val = function (m) { return Object.keys(m.parEntite).reduce(function (s, e) { return s + (!ent || e === ent ? m.parEntite[e][cle] : 0); }, 0); };
     var series = [{ nom: 'Retenue', couleur: COULEURS.ret, valeurs: cad.mois.map(val) }];
+    var b = budgetPour(bud, cad, ent);
+    if (b) series.push({ nom: 'Budget', couleur: '#444444', valeurs: b.parMois });
     return '<div class="card" style="margin-top:16px"><h2>Prévision mensuelle <small>' + esc(App.UNITES[App.etat.unite].lbl.toLowerCase()) + ', cadençage hebdomadaire regroupé par mois du jeudi</small></h2>' + App.barres(cad.mois.map(function (m) { return libMois(m.mois); }), series, 220) + App.legende(series) + '</div>';
   }
 
-  function dessiner(c, d, fiab, cad) {
+  // Budget sur les mois du cadençage, dans l'unité choisie (quantité ou valeur ; pas d'hectares au budget).
+  // Renvoie null si le budget, le cadençage ou l'unité manquent. entite : '' = toutes.
+  function budgetPour(bud, cad, entite) {
+    if (!bud || !bud.disponible || !cad || !cad.mois || !cad.mois.length || App.etat.unite === 'H') return null;
+    var cle = App.etat.unite === 'E' ? 'eur' : 'q';
+    if ((cle === 'q' && !bud.avecQuantite) || (cle === 'eur' && !bud.avecValeur)) return null;
+    var mois = cad.mois.map(function (m) { return m.mois; });
+    var parMois = mois.map(function (m) {
+      var ligne = bud.mois.filter(function (x) { return x.mois === m; })[0];
+      if (!ligne) return 0;
+      return Object.keys(ligne.parEntite).reduce(function (s2, e) { return s2 + (!entite || e.toUpperCase() === entite.toUpperCase() ? ligne.parEntite[e][cle] : 0); }, 0);
+    });
+    return { mois: mois, parMois: parMois, total: parMois.reduce(function (a, b) { return a + b; }, 0) };
+  }
+
+  function kpiBudget(bud, cad, t) {
+    if (bud === undefined) return ['Budget', '…', App.pill('info', 'Chargement', 'ℹ')];
+    if (!bud || !bud.disponible) return ['Budget', 'Non connecté', App.pill('info', bud && bud.raison && /ne permet pas/.test(bud.raison) ? 'Accès réservé' : 'Source BUDGET à déclarer', 'ℹ')];
+    if (App.etat.unite === 'H') return ['Budget ' + bud.annee, '—', App.pill('info', 'Pas d\'hectares au budget', 'ℹ')];
+    var b = budgetPour(bud, cad, App.etat.entite);
+    if (!b) return ['Budget ' + bud.annee, 'Cadençage requis', App.pill('info', 'Pour comparer aux mêmes mois', 'ℹ')];
+    var ecart = b.total ? (t.retenue / b.total - 1) * 100 : 0;
+    return ['Budget ' + bud.annee + ' (' + bud.version + ')', App.fmt(b.total), App.pill(Math.abs(ecart) > 5 ? 'warn' : 'ok', 'Retenue vs budget ' + App.pct(ecart), Math.abs(ecart) > 5 ? '⚠' : '✓')];
+  }
+
+  function dessiner(c, d, fiab, cad, bud) {
     var s = App.etat.session, t = App.totaux(d.totaux);
     var ref = d.anneeReference || 'N-1';
     var prevue = s.campagne.anneePrevision || '';
@@ -454,7 +482,7 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
     var kpis = [
       ['Prévision retenue' + (prevue ? ' ' + prevue : ''), App.fmt(t.retenue), d.version ? App.pill(t.retenue >= t.n1 ? 'ok' : 'warn', 'vs ' + ref + ' ' + (t.n1 ? App.pct((t.retenue / t.n1 - 1) * 100) : '—'), t.retenue >= t.n1 ? '▲' : '▼') : App.pill('info', 'Pas encore calculée', 'ℹ')],
       ['Prévision des TC', d.tc && d.tc.couverture ? App.fmt(t.tc) : 'Non connectée', d.tc && d.tc.couverture ? App.pill(d.tc.couverture.tcAyantSaisi < d.tc.couverture.tc ? 'warn' : 'ok', d.tc.couverture.tcAyantSaisi + ' TC sur ' + d.tc.couverture.tc + ' ont saisi', d.tc.couverture.tcAyantSaisi < d.tc.couverture.tc ? '⚠' : '✓') : (d.tc && d.tc.erreur ? App.pill('bad', 'Fichier illisible', '✖') : App.pill('info', 'Source PREV_TC à déclarer', 'ℹ'))],
-      ['Budget', 'Non connecté', App.pill('info', 'Source BUDGET à déclarer', 'ℹ')],
+      kpiBudget(bud, cad, t),
       kpiFiab,
       ['Alertes ouvertes', String(ouvertes), (n.ERREUR ? App.pill('bad', n.ERREUR + ' erreur(s)', '✖') + ' ' : '') + (n.ATTENTION ? App.pill('warn', n.ATTENTION + ' à vérifier', '⚠') : (ouvertes ? '' : App.pill('ok', 'Rien à signaler', '✓')))]
     ];
@@ -481,12 +509,17 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
       if (m.n1 && Math.abs(m.retenue / m.n1 - 1) * 100 > (s.seuilEcart || 15)) return App.pill('warn', 'Écart ' + ref + ' élevé', '⚠');
       return App.pill('ok', 'Dans la cible', '✓');
     };
-    var tableau = '<thead><tr><th>Entité</th><th class="n">Articles</th><th class="n">Réalisé ' + esc(ref) + '</th><th class="n">Statistique</th><th class="n">Prév. TC</th><th class="n">Retenue</th><th class="n">vs ' + esc(ref) + '</th><th>Lecture</th></tr></thead><tbody>' +
+    var avecBudget = !!budgetPour(bud, cad, '');
+    var cellBudget = function (entite, retenue) {
+      var bb = budgetPour(bud, cad, entite);
+      return bb ? '<td class="n">' + App.fmt(bb.total) + '</td><td class="n">' + (bb.total ? App.pct((retenue / bb.total - 1) * 100) : '—') + '</td>' : '<td class="n">–</td><td class="n">–</td>';
+    };
+    var tableau = '<thead><tr><th>Entité</th><th class="n">Articles</th><th class="n">Réalisé ' + esc(ref) + '</th><th class="n">Statistique</th><th class="n">Prév. TC</th><th class="n">Retenue</th><th class="n">vs ' + esc(ref) + '</th>' + (avecBudget ? '<th class="n">Budget</th><th class="n">vs budget</th>' : '') + '<th>Lecture</th></tr></thead><tbody>' +
       lignes.map(function (x) {
         var m = x[cle];
-        return '<tr><td><b>' + esc(x.entite) + '</b></td><td class="n">' + App.n0(x.articles) + '</td><td class="n">' + App.fmt(m.n1) + '</td><td class="n">' + App.fmt(m.statistique) + '</td><td class="n">' + (d.tc && d.tc.couverture ? App.fmt(m.tc) : '–') + '</td><td class="n"><b>' + App.fmt(m.retenue) + '</b></td><td class="n">' + (m.n1 ? App.pct((m.retenue / m.n1 - 1) * 100) : '—') + '</td><td>' + lecture(x) + '</td></tr>';
+        return '<tr><td><b>' + esc(x.entite) + '</b></td><td class="n">' + App.n0(x.articles) + '</td><td class="n">' + App.fmt(m.n1) + '</td><td class="n">' + App.fmt(m.statistique) + '</td><td class="n">' + (d.tc && d.tc.couverture ? App.fmt(m.tc) : '–') + '</td><td class="n"><b>' + App.fmt(m.retenue) + '</b></td><td class="n">' + (m.n1 ? App.pct((m.retenue / m.n1 - 1) * 100) : '—') + '</td>' + (avecBudget ? cellBudget(x.entite, m.retenue) : '') + '<td>' + lecture(x) + '</td></tr>';
       }).join('') +
-      (lignes.length > 1 ? '<tr class="tot"><td>Total</td><td class="n">' + App.n0(t.articles) + '</td><td class="n">' + App.fmt(t.n1) + '</td><td class="n">' + App.fmt(t.statistique) + '</td><td class="n">' + (d.tc && d.tc.couverture ? App.fmt(t.tc) : '–') + '</td><td class="n">' + App.fmt(t.retenue) + '</td><td class="n">' + (t.n1 ? App.pct((t.retenue / t.n1 - 1) * 100) : '—') + '</td><td></td></tr>' : '') + '</tbody>';
+      (lignes.length > 1 ? '<tr class="tot"><td>Total</td><td class="n">' + App.n0(t.articles) + '</td><td class="n">' + App.fmt(t.n1) + '</td><td class="n">' + App.fmt(t.statistique) + '</td><td class="n">' + (d.tc && d.tc.couverture ? App.fmt(t.tc) : '–') + '</td><td class="n">' + App.fmt(t.retenue) + '</td><td class="n">' + (t.n1 ? App.pct((t.retenue / t.n1 - 1) * 100) : '—') + '</td>' + (avecBudget ? cellBudget(App.etat.entite, t.retenue) : '') + '<td></td></tr>' : '') + '</tbody>';
 
     var tl = d.echeances.length ? '<div class="tl">' + d.echeances.map(function (e) {
       var dates = e.debut ? (e.debut + (e.fin ? ' → ' + e.fin : '')) : '';
@@ -496,10 +529,10 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
     var v = d.version;
     c.innerHTML = '<h1>Bonjour <span class="acc">' + esc(prenom(s.utilisateur)) + '</span></h1>' +
       '<p class="sub">Comité S&amp;OP – <b>' + esc(s.campagne.libelle || s.campagne.id) + '</b>' + (prevue ? ' · prévision ' + esc(prevue) : '') + (v ? ' · version ' + esc(App.typeVersion(v.type).toLowerCase()) + ' ' + esc(v.id) + ' du ' + esc(v.creeLe.slice(0, 10)) : ' · aucune version') + '</p>' +
-      '<div class="grid g4">' + kpiHtml + '</div>' +
+      '<div class="grid g5">' + kpiHtml + '</div>' +
       '<div class="grid g2" style="margin-top:16px"><div class="card"><h2>Prévision par entité <small>' + esc(App.UNITES[App.etat.unite].lbl.toLowerCase()) + '</small></h2>' + graphique + '</div>' +
       '<div class="card"><h2>Alertes automatiques <small>' + alertes.length + ' au total</small></h2>' + al + '</div></div>' +
-      carteMensuelle(cad) +
+      carteMensuelle(cad, bud) +
       '<div class="card" style="margin-top:16px"><h2>Vue comité par entité <small>maille entité</small></h2><div class="scroll"><table>' + tableau + '</table></div>' +
       '<p class="note">La vue par marché viendra avec le catalogue des produits.' + (App.etat.unite !== 'Q' ? ' Hectares et valeur sont déduits de la dernière année de vente de chaque article.' : '') + '</p></div>' +
       '<div class="card"><h2>Campagnes <small>statut de chaque campagne</small></h2>' + tl + '</div>';
@@ -512,8 +545,8 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
   }
 
   App.vues.dashboard = function (c) {
-    var etat = { d: null, fiab: undefined, cad: null };
-    var redessiner = function () { if (etat.d) dessiner(c, etat.d, etat.fiab, etat.cad); };
+    var etat = { d: null, fiab: undefined, cad: null, bud: undefined };
+    var redessiner = function () { if (etat.d) dessiner(c, etat.d, etat.fiab, etat.cad, etat.bud); };
     App.etat.redessiner = redessiner;
     App.donnees('tableauDeBord').then(function (r) {
       if (App.etat.ecran !== 'dashboard') return;
@@ -522,6 +555,10 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
       App.donnees('cadencage').then(function (k) {
         if (App.etat.ecran !== 'dashboard') return;
         etat.cad = k.ok ? k.data : null; redessiner();
+      });
+      App.donnees('budget').then(function (b) {
+        if (App.etat.ecran !== 'dashboard') return;
+        etat.bud = b.ok ? b.data : { disponible: false, raison: b.message }; redessiner();
       });
       App.donnees('essaiPonderation').then(function (f) {
         if (App.etat.ecran !== 'dashboard') return;

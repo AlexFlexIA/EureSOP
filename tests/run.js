@@ -1705,6 +1705,57 @@ test('saisie des TC : une source illisible donne une alerte et pas une erreur du
   assert.ok(r.data.alertes.some((a) => a.titre === 'Prévisions des TC illisibles' && a.niveau === 'ERREUR'));
 });
 
+// ---------- Budget ----------
+const F_BUD = 'FICHIER_BUDGET_0000000001';
+function envBud(opts) {
+  opts = opts || {};
+  const env = envCad(); env.moi('guillaume@eureden.com');
+  env.ajouterClasseur(F_BUD, { Budget: [['Annee', 'Version budget', 'Mois', 'Code produit', 'Entite', 'Quantite', 'Valeur euro'],
+    [2027, 'V1', '2027-02', DAP, 'Coop EUREDEN', 5000, 3000], [2027, 'V1', '2027-03', DAP, 'Coop EUREDEN', '8 000,5', 4800], [2027, 'V1', '2027-04', DAP, 'Coop EUREDEN', 2000, 1200],
+    [2027, 'V1', '2027-02', ONA_ART, 'NEGOCE ONA', 40, 400], [2026, 'V1', '2026-02', DAP, 'Coop EUREDEN', 1, 1],
+    [2027, 'V2', '2027-02', DAP, 'Coop EUREDEN', 9999, 9999]] });
+  env.semer('PARAM_FICHIER_TEST_00001', 'SOURCES', [{ 'ID source': 'BUD', Nature: 'BUDGET', 'ID fichier': F_BUD, Onglet: 'Budget', 'Actif import': 'OUI', Sensible: 'OUI' }]);
+  if (opts.version) env.semer('PARAM_FICHIER_TEST_00001', 'REGLAGES', [{ Cle: 'BUDGET_VERSION', Valeur: opts.version }]);
+  return env;
+}
+test('budget : totaux par mois et par entité, dernière version par défaut, autres années ignorées', () => {
+  const r = appel(envBud(), 'budget').data;
+  assert.strictEqual(r.disponible, true);
+  assert.strictEqual(r.annee, 2027);
+  assert.deepStrictEqual(r.versions, ['V1', 'V2']);
+  assert.strictEqual(r.version, 'V2');
+  assert.deepStrictEqual(r.mois.map((m) => m.mois), ['2027-02']);
+  assert.strictEqual(r.mois[0].parEntite['Coop EUREDEN'].q, 9999);
+});
+test('budget : version choisie par le réglage BUDGET_VERSION', () => {
+  const r = appel(envBud({ version: 'V1' }), 'budget').data;
+  assert.strictEqual(r.version, 'V1');
+  assert.deepStrictEqual(r.mois.map((m) => m.mois), ['2027-02', '2027-03', '2027-04']);
+  assert.strictEqual(r.mois[1].parEntite['Coop EUREDEN'].q, 8000.5);
+  assert.strictEqual(r.mois[1].parEntite['Coop EUREDEN'].eur, 4800);
+  assert.strictEqual(r.mois[0].parEntite['NEGOCE ONA'].q, 40);
+});
+test('budget : sans droit, sans source, sans année, colonne manquante', () => {
+  const env = envBud(); env.moi('rm.engrais@eureden.com');
+  const a = appel(env, 'budget').data;
+  assert.strictEqual(a.disponible, false);
+  assert.ok(/ne permet pas de voir le budget/.test(a.raison));
+  const env2 = envCad(); env2.moi('guillaume@eureden.com');
+  assert.ok(/Aucune source de budget/.test(appel(env2, 'budget').data.raison));
+  const env3 = envBud(); env3.moi('guillaume@eureden.com');
+  const env4 = envPrev(); env4.moi('guillaume@eureden.com');
+  env4.ajouterClasseur(F_BUD, { Budget: [['Annee', 'Mois', 'Entite', 'Quantite']] });
+  env4.semer('PARAM_FICHIER_TEST_00001', 'SOURCES', [{ 'ID source': 'BUD', Nature: 'BUDGET', 'ID fichier': F_BUD, Onglet: 'Budget', 'Actif import': 'OUI' }]);
+  assert.ok(/année de prévision/.test(appel(env4, 'budget').data.raison));
+  const env5 = envBud(); env5.moi('guillaume@eureden.com');
+  env5.classeurs[F_BUD]._feuilles.Budget._data[0][2] = 'Autre';
+  assert.strictEqual(appel(env5, 'budget').code, 'SOURCE_COLONNES');
+});
+test('budget : le tableau de bord ne signale plus le budget comme manquant', () => {
+  const env = envBud();
+  assert.ok(!appel(env, 'tableauDeBord').data.alertes.some((a) => a.titre === 'Source non connectée' && /Budget/.test(a.detail)));
+});
+
 let echecs = 0;
 tests.forEach(({ nom, fn }) => {
   try { fn(); console.log('  ok   ' + nom); } catch (e) { echecs++; console.log('  ECHEC ' + nom + '\n        ' + (e.message || e).split('\n')[0]); }
