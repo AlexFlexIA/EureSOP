@@ -968,6 +968,106 @@ test('sources : état de chaque fichier déclaré, liens réservés à la config
   assert.ok(s2.sources.every((x) => !x.lien));
 });
 
+// ---------- Corrections de l'historique ----------
+const corrH = (env, o, op) => ajout(env, Object.assign({ nature: 'HISTORIQUE', entite: 'Coop EUREDEN', code: DAP, annee: '2025', type: 'RUPTURE', corrigee: 20000, motif: 'Rupture de 3 semaines' }, o), op || ('h' + Math.random()));
+
+test('historique corrigé : enregistrement avec le brut relevé côté serveur', () => {
+  const env = envPrev(); env.moi('guillaume@eureden.com');
+  const r = corrH(env, {}, 'h1');
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(r.data.resultat.id, 'HIS0001');
+  assert.strictEqual(r.data.resultat.brute, 16900);
+  const l = env.lignes('SORTIE1', 'CORRECTIONS_HISTO')[0];
+  assert.strictEqual(l['Qte brute'], 16900);
+  assert.strictEqual(l['Qte corrigee'], 20000);
+  assert.strictEqual(l['Semaine debut'], '2025-S01');
+  assert.strictEqual(l.Statut, 'ACTIVE');
+  assert.strictEqual(l['Methode estimation'], 'MANUELLE');
+});
+test('historique corrigé : l\'écran Historique applique la correction et garde le brut', () => {
+  const env = envPrev(); env.moi('guillaume@eureden.com');
+  corrH(env, {}, 'h1');
+  const d = env.run('apiHistorique()').data;
+  const a = d.articles.filter((x) => x.code === DAP)[0];
+  assert.strictEqual(a.parAnnee['2025'].qte, 20000);
+  assert.strictEqual(a.parAnnee['2025'].brute.qte, 16900);
+  assert.strictEqual(a.parAnnee['2025'].corrige.type, 'RUPTURE');
+  assert.ok(Math.abs(a.parAnnee['2025'].ha - 169 * 20000 / 16900) < 1e-9);
+  assert.strictEqual(d.nbCorrections, 1);
+  const t = d.totaux.filter((x) => x.entite === 'Coop EUREDEN' && x.annee === '2025')[0];
+  assert.strictEqual(t.deltaQte, 3100);
+});
+test('historique corrigé : la statistique et le réalisé de référence partent de l\'historique corrigé', () => {
+  const env = envPrev(); env.moi('guillaume@eureden.com');
+  corrH(env, {}, 'h1');
+  env.run("apiCalculerStatistique({}, 'op0')");
+  const d = prevLigne(env, DAP);
+  assert.strictEqual(d['Qte historique corrigee N-1'], 20000);
+  assert.strictEqual(d['Qte statistique'], 18282.688);
+});
+test('historique corrigé : une nouvelle correction remplace la précédente, l\'annulation rend le brut', () => {
+  const env = envPrev(); env.moi('guillaume@eureden.com');
+  corrH(env, { corrigee: 20000 }, 'h1');
+  corrH(env, { corrigee: 18000 }, 'h2');
+  assert.deepStrictEqual(env.lignes('SORTIE1', 'CORRECTIONS_HISTO').map((x) => x.Statut), ['ANNULEE', 'ACTIVE']);
+  assert.strictEqual(env.run('apiHistorique()').data.articles.filter((x) => x.code === DAP)[0].parAnnee['2025'].qte, 18000);
+  assert.strictEqual(env.run("apiAnnulerAjustement('HISTORIQUE', 'HIS0002', 'n1')").ok, true);
+  const env2 = envPrev(); env2.moi('guillaume@eureden.com');
+  corrH(env2, {}, 'h1');
+  env2.run("apiAnnulerAjustement('HISTORIQUE', 'HIS0001', 'n1')");
+  assert.strictEqual(env2.run('apiHistorique()').data.articles.filter((x) => x.code === DAP)[0].parAnnee['2025'].qte, 16900);
+  assert.strictEqual(env2.run("apiAnnulerAjustement('HISTORIQUE', 'HIS0001', 'n2')").code, 'DEJA_ANNULE');
+});
+test('historique corrigé : article sans vente cette année, créé par la correction', () => {
+  const env = envPrev(); env.moi('guillaume@eureden.com');
+  const r = corrH(env, { code: '9999999', corrigee: 100 }, 'h1');
+  assert.ok(/faute de frappe/.test(r.data.resultat.avertissement));
+  env.run("apiCalculerStatistique({}, 'op0')");
+  assert.strictEqual(prevLigne(env, '9999999', 'Coop EUREDEN')['Qte historique corrigee N-1'], 100);
+});
+test('historique corrigé : contrôles du type, de l\'année, de la quantité, du motif et de l\'entité', () => {
+  const env = envPrev(); env.moi('guillaume@eureden.com');
+  const code = (o) => corrH(env, o).code;
+  assert.strictEqual(code({ type: 'N IMPORTE QUOI' }), 'TYPE_INVALIDE');
+  assert.strictEqual(code({ annee: '25' }), 'ANNEE_INVALIDE');
+  assert.strictEqual(code({ annee: '2031' }), 'ANNEE_INCONNUE');
+  assert.strictEqual(code({ corrigee: -5 }), 'QUANTITE_INVALIDE');
+  assert.strictEqual(code({ corrigee: '' }), 'QUANTITE_INVALIDE');
+  assert.strictEqual(code({ motif: '' }), 'MOTIF_OBLIGATOIRE');
+  assert.strictEqual(code({ entite: 'Inconnue' }), 'ENTITE_INCONNUE');
+  assert.strictEqual(code({ code: '' }), 'CODE_OBLIGATOIRE');
+  assert.strictEqual(env.lignes('SORTIE1', 'CORRECTIONS_HISTO').length, 0);
+});
+test('historique corrigé : droits, et un TC voit toujours le brut', () => {
+  const env = envPrev(); env.moi('rm.engrais@eureden.com');
+  assert.strictEqual(corrH(env, {}, 'r1').code, 'CAPACITE_REFUSEE');
+  env.moi('guillaume@eureden.com');
+  corrH(env, {}, 'h1');
+  const env2 = envPrev(); env2.moi('guillaume@eureden.com');
+  corrH(env2, {}, 'h1');
+  env2.moi('tc.ok@eureden.com');
+  const a = env2.run('apiHistorique()').data.articles.filter((x) => x.code === DAP)[0];
+  assert.strictEqual(a.parAnnee['2025'].qte, 900);
+  assert.strictEqual(a.parAnnee['2025'].brute, undefined);
+});
+test('historique corrigé : l\'alerte de saisies non appliquées inclut les corrections d\'historique', () => {
+  const env = envPrev(); env.moi('guillaume@eureden.com');
+  env.run("apiCalculerStatistique({}, 'op0')");
+  corrH(env, {}, 'h1');
+  assert.ok(appel(env, 'tableauDeBord').data.alertes.some((a) => a.titre === 'Saisies non appliquées'));
+  appel(env, 'reprevision', [{ corrections: [] }, 'rp1']);
+  assert.ok(!appel(env, 'tableauDeBord').data.alertes.some((a) => a.titre === 'Saisies non appliquées'));
+  assert.strictEqual(prevLigne(env, DAP)['Qte historique corrigee N-1'], 20000);
+});
+test('historique corrigé : la liste des saisies expose les corrections d\'historique actives', () => {
+  const env = envPrev(); env.moi('guillaume@eureden.com');
+  corrH(env, {}, 'h1');
+  const l = env.run('apiAjustements()').data.historique;
+  assert.strictEqual(l.length, 1);
+  assert.strictEqual(l[0].brute, 16900);
+  assert.strictEqual(l[0].annee, '2025');
+});
+
 let echecs = 0;
 tests.forEach(({ nom, fn }) => {
   try { fn(); console.log('  ok   ' + nom); } catch (e) { echecs++; console.log('  ECHEC ' + nom + '\n        ' + (e.message || e).split('\n')[0]); }

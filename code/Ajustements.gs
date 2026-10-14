@@ -10,6 +10,7 @@
 var Ajustements = (function () {
   var TYPES_EVENEMENT = ['POLCO', 'PROMO', 'GRAND_COMPTE', 'APPEL_OFFRES', 'REGLEMENTAIRE'];
   var MOTIFS_SUBSTITUTION = ['REMPLACEMENT', 'REGLEMENTAIRE', 'AUTRE'];
+  var TYPES_HISTORIQUE = ['RUPTURE', 'ANOMALIE', 'EVENEMENT', 'SUBSTITUTION', 'APPRO_FOURNISSEUR'];
 
   function nombre(v) {
     if (typeof v === 'number') return isFinite(v) ? v : NaN;
@@ -38,7 +39,7 @@ var Ajustements = (function () {
   // Droits : correction et événement demandent la correction de prévision, substitution et arrêt la validation de gamme
   // ou l'arbitrage. Le périmètre doit être global : ces fichiers ne portent pas le marché ni le territoire.
   function exigerDroit(acteur, nature) {
-    var cap = nature === 'SUBSTITUTION' || nature === 'ARRET' ? (acteur.caps.validationGamme ? 'validationGamme' : 'arbitrage') : 'correctionPrevision';
+    var cap = nature === 'SUBSTITUTION' || nature === 'ARRET' ? (acteur.caps.validationGamme ? 'validationGamme' : 'arbitrage') : (nature === 'HISTORIQUE' ? 'correctionHistorique' : 'correctionPrevision');
     Auth.requireCap(acteur, cap);
     if (!Auth.inScope(acteur, cap, {})) {
       throw new AppError('CAPACITE_REFUSEE', 'Cette saisie porte sur un article de toute la campagne : elle demande un périmètre global. Pour un périmètre marché, saisissez directement dans l\'onglet SUBSTITUTIONS.');
@@ -76,13 +77,13 @@ var Ajustements = (function () {
   function creer(acteur, entree, idOperation) {
     entree = entree || {};
     var nature = norm(entree.nature);
-    if (['CORRECTION', 'EVENEMENT', 'SUBSTITUTION', 'ARRET'].indexOf(nature) < 0) throw new AppError('NATURE_INVALIDE', 'Nature inconnue : ' + txt(entree.nature) + '.');
+    if (['CORRECTION', 'EVENEMENT', 'SUBSTITUTION', 'ARRET', 'HISTORIQUE'].indexOf(nature) < 0) throw new AppError('NATURE_INVALIDE', 'Nature inconnue : ' + txt(entree.nature) + '.');
     exigerDroit(acteur, nature);
     var ctx = Versions.contexte(acteur);
     var code = txt(entree.code), ancien = txt(entree.ancien), nouveau = txt(entree.nouveau);
     var entite = txt(entree.entite) ? nomEntite(entree.entite) : '';
 
-    if (nature === 'CORRECTION' || nature === 'EVENEMENT') {
+    if (nature === 'CORRECTION' || nature === 'EVENEMENT' || nature === 'HISTORIQUE') {
       if (!code) throw new AppError('CODE_OBLIGATOIRE', 'Le code produit est obligatoire.');
       if (!entite) throw new AppError('ENTITE_INCONNUE', 'Entité inconnue : choisissez une entité de l\'historique.');
     }
@@ -94,14 +95,24 @@ var Ajustements = (function () {
     }
 
     var donnees;
-    if (nature === 'CORRECTION') {
+    if (nature === 'HISTORIQUE') {
+      var type = norm(entree.type);
+      if (TYPES_HISTORIQUE.indexOf(type) < 0) throw new AppError('TYPE_INVALIDE', 'Type de correction inconnu : ' + txt(entree.type) + '.');
+      var an = txt(entree.annee);
+      if (!/^\d{4}$/.test(an)) throw new AppError('ANNEE_INVALIDE', 'L\'année se saisit sur quatre chiffres.');
+      var corrigee = txt(entree.corrigee) === '' ? NaN : nombre(entree.corrigee);
+      if (isNaN(corrigee) || corrigee < 0) throw new AppError('QUANTITE_INVALIDE', 'La quantité corrigée est un nombre positif ou nul.');
+      var motifH = txt(entree.motif);
+      if (!motifH) throw new AppError('MOTIF_OBLIGATOIRE', 'Le motif d\'une correction d\'historique est obligatoire.');
+      donnees = { type: type, annee: an, corrigee: corrigee, motif: motifH };
+    } else if (nature === 'CORRECTION') {
       var motif = txt(entree.motif);
       if (!motif) throw new AppError('MOTIF_OBLIGATOIRE', 'Le motif d\'une correction est obligatoire.');
       donnees = { impact: impact(entree), semaines: semaines(entree), motif: motif };
     } else if (nature === 'EVENEMENT') {
-      var type = norm(entree.type);
-      if (TYPES_EVENEMENT.indexOf(type) < 0) throw new AppError('TYPE_INVALIDE', 'Type d\'événement inconnu : ' + txt(entree.type) + '.');
-      donnees = { impact: impact(entree), semaines: semaines(entree), type: type };
+      var typeEvt = norm(entree.type);
+      if (TYPES_EVENEMENT.indexOf(typeEvt) < 0) throw new AppError('TYPE_INVALIDE', 'Type d\'événement inconnu : ' + txt(entree.type) + '.');
+      donnees = { impact: impact(entree), semaines: semaines(entree), type: typeEvt };
     } else {
       var taux = txt(entree.taux) === '' ? 100 : nombre(entree.taux);
       if (isNaN(taux) || taux <= 0 || taux > 100) throw new AppError('TAUX_INVALIDE', 'Le taux de report est un pourcentage entre 0 (exclu) et 100.');
@@ -119,9 +130,31 @@ var Ajustements = (function () {
         var id, avertissement = '';
         var connus = Store.read(ctx.idSortie, 'PREVISION').rows;
         var verifier = nature === 'SUBSTITUTION' || nature === 'ARRET' ? ancien : code;
+        if (nature === 'HISTORIQUE') connus = [];
         var existe = connus.some(function (r) { return txt(r['Code produit']) === verifier && (!entite || norm(r.Entite) === norm(entite)); });
-        if (!existe) avertissement = 'Le code ' + verifier + ' n\'est pas dans la prévision actuelle' + (entite ? ' de ' + entite : '') + ' : nouvel article ou faute de frappe ?';
+        if (!existe && nature !== 'HISTORIQUE') avertissement = 'Le code ' + verifier + ' n\'est pas dans la prévision actuelle' + (entite ? ' de ' + entite : '') + ' : nouvel article ou faute de frappe ?';
 
+        if (nature === 'HISTORIQUE') {
+          var h = Histo.agreger(acteur, true, true);
+          if (h.annees.indexOf(donnees.annee) < 0) throw new AppError('ANNEE_INCONNUE', 'L\'année ' + donnees.annee + ' ne fait pas partie de l\'historique (' + h.annees.join(', ') + ').');
+          var art = h.articles.filter(function (a) { return a.code === code && norm(a.entite) === norm(entite); })[0];
+          var brute = art && art.parAnnee[donnees.annee] ? art.parAnnee[donnees.annee].qte : 0;
+          if (!art) avertissement = 'Le code ' + code + ' n\'a aucune vente dans l\'historique de ' + entite + ' : faute de frappe ?';
+          var his = Store.read(ctx.idSortie, 'CORRECTIONS_HISTO').rows;
+          his.filter(function (r) { return norm(r.Statut) === 'ACTIVE' && cle(r.Entite, r['Code produit']) === cle(entite, code) && txt(r['Semaine debut']).slice(0, 4) === donnees.annee; }).forEach(function (r) {
+            Store.updateRow(ctx.idSortie, 'CORRECTIONS_HISTO', r._row, { 'Statut': 'ANNULEE', 'Annule par': acteur.email, 'Annule le': maintenantTxt });
+            Journal.log(ctx.idSortie, acteur, 'AJUSTEMENT_ANNULE', txt(r['ID correction']), 'ACTIVE', 'ANNULEE', 'Remplacée par une nouvelle correction', idOperation);
+          });
+          id = suivant(Store.read(ctx.idSortie, 'CORRECTIONS_HISTO').rows, 'ID correction', 'HIS', 4);
+          Store.append(ctx.idSortie, 'CORRECTIONS_HISTO', [{
+            'ID correction': id, 'Code produit': code, 'Entite': entite, 'Plateforme': '*',
+            'Semaine debut': donnees.annee + '-S01', 'Semaine fin': donnees.annee + '-S52', 'Type': donnees.type,
+            'Qte brute': brute, 'Qte corrigee': donnees.corrigee, 'Methode estimation': 'MANUELLE', 'Motif': donnees.motif,
+            'Commentaire': txt(entree.commentaire), 'Statut': 'ACTIVE', 'Cree par': acteur.email, 'Cree le': maintenantTxt
+          }]);
+          Journal.log(ctx.idSortie, acteur, 'AJUSTEMENT_CREE', id, '', nature, donnees.motif, idOperation);
+          return { id: id, nature: nature, avertissement: avertissement, brute: brute };
+        }
         if (nature === 'CORRECTION') {
           var cors = Store.read(ctx.idSortie, 'AJUSTEMENTS_SEMAINE').rows;
           id = suivant(cors, 'ID ajustement', 'COR', 4);
@@ -159,18 +192,21 @@ var Ajustements = (function () {
 
   function annuler(acteur, nature, id, idOperation) {
     nature = norm(nature);
-    if (['CORRECTION', 'EVENEMENT', 'SUBSTITUTION'].indexOf(nature) < 0) throw new AppError('NATURE_INVALIDE', 'Nature inconnue : ' + txt(nature) + '.');
+    if (['CORRECTION', 'EVENEMENT', 'SUBSTITUTION', 'HISTORIQUE'].indexOf(nature) < 0) throw new AppError('NATURE_INVALIDE', 'Nature inconnue : ' + txt(nature) + '.');
     exigerDroit(acteur, nature);
     var ctx = Versions.contexte(acteur);
     return sousVerrou(function () {
       return Operations.run(ctx.idSortie, acteur, idOperation, function () {
         var maintenantTxt = maintenant();
         var fichier = nature === 'SUBSTITUTION' ? Params.idFichier() : ctx.idSortie;
-        var onglet = nature === 'CORRECTION' ? 'AJUSTEMENTS_SEMAINE' : nature === 'EVENEMENT' ? 'EVENEMENTS_COMMERCE' : 'SUBSTITUTIONS';
-        var colId = nature === 'CORRECTION' ? 'ID ajustement' : nature === 'EVENEMENT' ? 'ID evenement' : 'ID substitution';
+        var onglet = { CORRECTION: 'AJUSTEMENTS_SEMAINE', EVENEMENT: 'EVENEMENTS_COMMERCE', SUBSTITUTION: 'SUBSTITUTIONS', HISTORIQUE: 'CORRECTIONS_HISTO' }[nature];
+        var colId = { CORRECTION: 'ID ajustement', EVENEMENT: 'ID evenement', SUBSTITUTION: 'ID substitution', HISTORIQUE: 'ID correction' }[nature];
         var ligne = Store.read(fichier, onglet).rows.filter(function (r) { return txt(r[colId]) === txt(id); })[0];
         if (!ligne) throw new AppError('AJUSTEMENT_INCONNU', 'Saisie ' + txt(id) + ' introuvable.');
-        if (nature === 'CORRECTION') {
+        if (nature === 'HISTORIQUE') {
+          if (norm(ligne.Statut) !== 'ACTIVE') throw new AppError('DEJA_ANNULE', 'La saisie ' + txt(id) + ' est déjà annulée.');
+          Store.updateRow(fichier, onglet, ligne._row, { 'Statut': 'ANNULEE', 'Annule par': acteur.email, 'Annule le': maintenantTxt });
+        } else if (nature === 'CORRECTION') {
           if (norm(ligne.Statut) !== 'ACTIF') throw new AppError('DEJA_ANNULE', 'La saisie ' + txt(id) + ' est déjà annulée.');
           Store.updateRow(fichier, onglet, ligne._row, { 'Statut': 'ANNULE', 'Annule par': acteur.email, 'Annule le': maintenantTxt });
         } else {
@@ -196,7 +232,10 @@ var Ajustements = (function () {
     var substitutions = Store.read(Params.idFichier(), 'SUBSTITUTIONS').rows
       .filter(function (r) { return yes(r.Actif) && txt(r['Code ancien']) && autorise(txt(r.Entite), ''); })
       .map(function (r) { return { id: txt(r['ID substitution']), nature: txt(r['Code nouveau']) ? 'SUBSTITUTION' : 'ARRET', ancien: txt(r['Code ancien']), nouveau: txt(r['Code nouveau']), entite: txt(r.Entite), taux: txt(r['Taux de report']) || '100', motif: norm(r.Motif), effet: txt(r['Date effet']), fin: txt(r['Date fin']), commentaire: txt(r.Commentaire), par: txt(r['Renseigne par']) }; });
-    return { corrections: corrections, evenements: evenements, substitutions: substitutions, entites: Histo.sources(ctx.idCampagne).map(function (s) { return txt(s.Entite); }) };
+    var historique = Store.read(ctx.idSortie, 'CORRECTIONS_HISTO').rows
+      .filter(function (r) { return norm(r.Statut) === 'ACTIVE' && autorise(txt(r.Entite), ''); })
+      .map(function (r) { return { id: txt(r['ID correction']), code: txt(r['Code produit']), entite: txt(r.Entite), annee: txt(r['Semaine debut']).slice(0, 4), type: norm(r.Type), brute: Number(r['Qte brute']) || 0, corrigee: Number(r['Qte corrigee']) || 0, motif: txt(r.Motif), commentaire: txt(r.Commentaire), par: txt(r['Cree par']), le: txt(r['Cree le']) }; });
+    return { corrections: corrections, evenements: evenements, substitutions: substitutions, historique: historique, entites: Histo.sources(ctx.idCampagne).map(function (s) { return txt(s.Entite); }) };
   }
 
   // Corrections saisies en bloc dans le tableau de prévision : chaque ligne donne la correction nette voulue pour un article.
@@ -312,5 +351,5 @@ var Ajustements = (function () {
     return res;
   }
 
-  return { creer: creer, annuler: annuler, lister: lister, effets: effets, preparerCorrections: preparerCorrections, remplacerCorrections: remplacerCorrections, TYPES_EVENEMENT: TYPES_EVENEMENT };
+  return { creer: creer, annuler: annuler, lister: lister, effets: effets, preparerCorrections: preparerCorrections, remplacerCorrections: remplacerCorrections, TYPES_EVENEMENT: TYPES_EVENEMENT, TYPES_HISTORIQUE: TYPES_HISTORIQUE };
 })();

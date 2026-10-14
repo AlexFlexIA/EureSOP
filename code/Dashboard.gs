@@ -45,7 +45,7 @@ var Dashboard = (function () {
       var enAttente;
       if (d.version.type === 'STATISTIQUE') {
         var saisies = Ajustements.lister(acteur);
-        enAttente = saisies.corrections.length + saisies.evenements.length + saisies.substitutions.length;
+        enAttente = saisies.corrections.length + saisies.evenements.length + saisies.substitutions.length + saisies.historique.length;
       } else {
         var journal = Store.read(Versions.contexte(acteur).idSortie, 'JOURNAL').rows;
         var creation = 0;

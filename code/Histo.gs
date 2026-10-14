@@ -122,8 +122,27 @@ var Histo = (function () {
     };
   }
 
+  // Corrections actives de CORRECTIONS_HISTO (SORTIE). La dernière ligne active gagne pour un même article et une même année.
+  // La période se saisit au niveau du PAC : l'année est celle de « Semaine debut » (AAAA-Sss).
+  function lireCorrections(actor) {
+    var idSortie;
+    try { idSortie = Versions.contexte(actor).idSortie; } catch (e) { if (e && e.code === 'SORTIE_NON_CONFIGUREE') return []; throw e; }
+    var vues = {};
+    Store.read(idSortie, 'CORRECTIONS_HISTO').rows.forEach(function (r) {
+      if (norm(r.Statut) !== 'ACTIVE') return;
+      var annee = txt(r['Semaine debut']).slice(0, 4);
+      var corrigee = Number(r['Qte corrigee']);
+      if (!/^\d{4}$/.test(annee) || !txt(r['Code produit']) || !txt(r.Entite) || !isFinite(corrigee) || txt(r['Qte corrigee']) === '') return;
+      vues[norm(r.Entite) + '|' + txt(r['Code produit']) + '|' + annee] = {
+        id: txt(r['ID correction']), code: txt(r['Code produit']), entite: txt(r.Entite), annee: annee, corrigee: corrigee, type: norm(r.Type)
+      };
+    });
+    return Object.keys(vues).map(function (k) { return vues[k]; });
+  }
+
   // toutVoir : ignore le périmètre (réservé aux calculs faits par un rôle au périmètre global).
-  function agreger(actor, toutVoir) {
+  // brut : n'applique pas les corrections de l'historique (pour mesurer ce qu'une correction change).
+  function agreger(actor, toutVoir, brut) {
     Auth.requireCap(actor, 'consultation');
     var campagne = txt(actor.campagne['ID campagne']);
     var liste = sources(campagne);
@@ -179,10 +198,37 @@ var Histo = (function () {
       return t;
     }).sort(function (a, b) { return a.entite < b.entite ? -1 : a.entite > b.entite ? 1 : (a.annee < b.annee ? -1 : 1); });
 
+    // Corrections de l'historique : elles remplacent la quantité d'un article pour une année. Elles ne s'appliquent que si
+    // l'acteur voit toutes les lignes (global) : un TC ne voit qu'une partie des ventes d'un article.
+    var nbCorrections = 0;
+    if (!brut && (toutVoir || Auth.inScope(actor, 'consultation', {}))) {
+      var index = {};
+      Object.keys(articles).forEach(function (k) { index[norm(k)] = k; });
+      lireCorrections(actor).forEach(function (cr) {
+        if (!toutesAnnees[cr.annee]) return;
+        var ak = index[norm(cr.entite + '|' + cr.code)];
+        var a = ak ? articles[ak] : null;
+        if (!a) {
+          ak = cr.entite + '|' + cr.code;
+          a = articles[ak] = { code: cr.code, libelle: '', entite: cr.entite, parAnnee: {} };
+          index[norm(ak)] = ak;
+        }
+        var p = a.parAnnee[cr.annee] || (a.parAnnee[cr.annee] = { qte: 0, ha: 0, mt: 0, tc: 0 });
+        var facteur = p.qte > 0 ? cr.corrigee / p.qte : 1;
+        var tk = cr.entite + '|' + cr.annee;
+        var t = totaux[tk];
+        if (t) t.deltaQte = (t.deltaQte || 0) + (cr.corrigee - p.qte);
+        p.brute = { qte: p.qte, ha: p.ha, mt: p.mt };
+        p.qte = cr.corrigee; p.ha = p.ha * facteur; p.mt = p.mt * facteur;
+        p.corrige = { id: cr.id, type: cr.type };
+        nbCorrections++;
+      });
+    }
+
     var tous = Object.keys(articles).map(function (k) { return articles[k]; });
     var valeur = function (a) { var p = a.parAnnee[derniere]; return p ? p.mt : 0; };
     tous.sort(function (a, b) { return valeur(b) - valeur(a) || (a.code < b.code ? -1 : 1); });
-    return { annees: an, sources: infos, totaux: totauxListe, articles: tous, avertissements: avertissements };
+    return { annees: an, sources: infos, totaux: totauxListe, articles: tous, avertissements: avertissements, nbCorrections: nbCorrections };
   }
 
   function synthese(actor) {
@@ -194,6 +240,7 @@ var Histo = (function () {
       articles: d.articles.slice(0, MAX_ARTICLES),
       nbArticles: d.articles.length,
       tronque: d.articles.length > MAX_ARTICLES,
+      nbCorrections: d.nbCorrections,
       avertissements: d.avertissements
     };
   }

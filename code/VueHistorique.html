@@ -2,6 +2,8 @@
 (function () {
   'use strict';
   var App = window.App, esc = App.esc;
+  var TYPES_HIST = [['RUPTURE', 'Rupture'], ['ANOMALIE', 'Anomalie'], ['EVENEMENT', 'Événement exceptionnel'], ['SUBSTITUTION', 'Substitution'], ['APPRO_FOURNISSEUR', 'Problème d\'appro fournisseur']];
+  var libType = function (t) { var x = TYPES_HIST.filter(function (y) { return y[0] === t; })[0]; return x ? x[1] : t; };
   var MOTIFS_SUB = [['REMPLACEMENT', 'Remplacement'], ['REGLEMENTAIRE', 'Réglementaire'], ['AUTRE', 'Autre']];
 
   App.vues.historique = function (c) {
@@ -9,6 +11,7 @@
     var droits = App.etat.session.droits;
     var ouverte = ['GELEE', 'CLOTUREE'].indexOf(App.etat.session.campagne.statut) < 0;
     var peutSaisir = ouverte && (droits.validationGamme || droits.arbitrage);
+    var peutCorriger = ouverte && droits.correctionHistorique;
 
     // Quantité, hectares ou montant d'un article pour une année, selon l'unité choisie.
     function valeur(p) {
@@ -27,7 +30,8 @@
       var corps = sel.slice(0, 200).map(function (a) {
         var l = valeur(a.parAnnee[derniere]) || 0, b = avant ? (valeur(a.parAnnee[avant]) || 0) : 0;
         return '<tr><td>' + esc(a.code) + '</td><td>' + esc(a.libelle) + '</td><td>' + esc(a.entite) + '</td>' + an.map(function (y) {
-          var v = valeur(a.parAnnee[y]); return '<td class="n">' + (v === null ? '–' : App.fmt(v)) + '</td>';
+          var p = a.parAnnee[y], v = valeur(p);
+          return '<td class="n">' + (v === null ? '–' : App.fmt(v)) + (p && p.corrige ? ' <span class="pill p-brand" title="Corrigé : brut ' + esc(App.n0(p.brute.qte)) + ' (' + esc(libType(p.corrige.type)) + ')">●</span>' : '') + '</td>';
         }).join('') + (avant ? '<td>' + App.variation(l, b) + '</td>' : '') + '</tr>';
       }).join('');
       return (sel.length ? '<table><thead><tr><th>Code</th><th>Libellé</th><th>Entité</th>' + an.map(function (y) { return '<th class="n">' + esc(App.UNITES[App.etat.unite].lbl) + ' ' + esc(y) + '</th>'; }).join('') + (avant ? '<th>' + esc(derniere) + ' vs ' + esc(avant) + '</th>' : '') + '</tr></thead><tbody>' + corps + '</tbody></table>' : '<div class="vide">Aucun article ne correspond.</div>') +
@@ -37,9 +41,19 @@
     function totaux() {
       var h = etat.h, ent = App.etat.entite;
       var lignes = h.totaux.filter(function (t) { return !ent || t.entite === ent; });
-      return '<table><thead><tr><th>Entité</th><th>Année</th><th class="n">Articles</th><th class="n">TC</th><th class="n">Quantité</th><th class="n">Hectares</th><th class="n">Montant HT</th></tr></thead><tbody>' +
-        lignes.map(function (t) { return '<tr><td>' + esc(t.entite) + '</td><td>' + esc(t.annee) + '</td><td class="n">' + App.n0(t.articles) + '</td><td class="n">' + App.n0(t.tc) + '</td><td class="n">' + App.n0(t.qte) + '</td><td class="n">' + App.n0(t.ha) + '</td><td class="n">' + App.n0(t.montant) + ' €</td></tr>'; }).join('') + '</tbody></table>' +
-        '<p class="note">La quantité additionne des unités de stock différentes (sacs, bidons, kg).</p>';
+      return '<table><thead><tr><th>Entité</th><th>Année</th><th class="n">Articles</th><th class="n">TC</th><th class="n">Quantité</th><th class="n">Hectares</th><th class="n">Montant HT</th><th class="n">Corrections de quantité</th></tr></thead><tbody>' +
+        lignes.map(function (t) { return '<tr><td>' + esc(t.entite) + '</td><td>' + esc(t.annee) + '</td><td class="n">' + App.n0(t.articles) + '</td><td class="n">' + App.n0(t.tc) + '</td><td class="n">' + App.n0(t.qte) + '</td><td class="n">' + App.n0(t.ha) + '</td><td class="n">' + App.n0(t.montant) + ' €</td><td class="n">' + (t.deltaQte ? (t.deltaQte > 0 ? '+' : '') + App.n0(t.deltaQte) : '–') + '</td></tr>'; }).join('') + '</tbody></table>' +
+        '<p class="note">Ces totaux sont les ventes brutes des fichiers. La quantité additionne des unités de stock différentes (sacs, bidons, kg). La colonne Corrections montre ce que les corrections ci-dessous ajoutent ou retirent.</p>';
+    }
+
+    function tableCorrections() {
+      var l = etat.aj.historique;
+      if (!l.length) return '<div class="vide">Aucune correction de l\'historique.</div>';
+      return '<table><thead><tr><th>Numéro</th><th>Article</th><th>Entité</th><th>Année</th><th>Type</th><th class="n">Brut</th><th class="n">Corrigé</th><th>Motif</th><th>Auteur</th><th></th></tr></thead><tbody>' + l.map(function (x) {
+        var art = etat.h.articles.filter(function (a) { return a.code === x.code && a.entite === x.entite; })[0];
+        return '<tr><td>' + esc(x.id) + '</td><td><b>' + esc(art && art.libelle ? art.libelle : x.code) + '</b><br><span class="note">' + esc(x.code) + '</span></td><td>' + esc(x.entite) + '</td><td>' + esc(x.annee) + '</td><td>' + App.pill('info', libType(x.type), '⟲') + '</td><td class="n">' + App.n0(x.brute) + '</td><td class="n"><b>' + App.n0(x.corrigee) + '</b></td><td>' + esc(x.motif) + (x.commentaire ? '<br><span class="note">' + esc(x.commentaire) + '</span>' : '') + '</td><td>' + esc(x.par) + '</td><td>' +
+          (peutCorriger ? '<button class="btn petit" type="button" data-annuler-h="' + esc(x.id) + '">Annuler</button>' : '') + '</td></tr>';
+      }).join('') + '</tbody></table>';
     }
 
     function tableSubstitutions() {
@@ -56,10 +70,26 @@
       var ref = etat.h.annees.join(', ');
       c.innerHTML = '<h1>Historique &amp; substitutions</h1><p class="sub">Fiabiliser l\'historique avant de prévoir : arrêts de produit et remplacements d\'articles. Années lues : ' + esc(ref) + '.</p>' +
         '<div class="card"><h2>Ventes réalisées <small>par entité et par année</small></h2><div class="scroll" style="max-height:260px">' + totaux() + '</div></div>' +
+        '<div class="card"><h2>Corrections de l\'historique <small>chaque correction est tracée, le brut n\'est jamais écrasé</small></h2><div class="scroll" style="max-height:300px">' + tableCorrections() + '</div>' +
+        (peutCorriger ? '<div class="row" style="margin-top:10px"><button class="btn pri" id="h-corr" type="button">+ Corriger une période</button><span class="note">La correction remplace la quantité d\'un article pour une année. Elle compte dans la statistique à la prochaine reprévision.</span></div>' : '<p class="note">Votre rôle ne permet pas de corriger l\'historique.</p>') + '</div>' +
         '<div class="card"><h2>Table de substitution <small>arrêts de produit et remplacements, valables pour toutes les campagnes</small></h2><div class="scroll" style="max-height:300px" id="h-subs">' + tableSubstitutions() + '</div>' +
         (peutSaisir ? '<div class="row" style="margin-top:10px"><button class="btn pri" id="h-arret" type="button">+ Arrêt de produit</button><button class="btn pri" id="h-sub" type="button">+ Substitution</button><span class="note">Effet à la prochaine reprévision. Pas de chaînage : un report ne se répercute pas sur un autre report.</span></div>' : '<p class="note">Votre rôle ne permet pas de saisir d\'arrêt ni de substitution.</p>') + '</div>' +
         '<div class="card"><h2>Historique par article</h2><div class="row" style="margin-bottom:10px"><label class="ctl" style="margin:0">Rechercher<input id="h-q" type="search" maxlength="60" value="' + esc(etat.q) + '" placeholder="code ou libellé"></label></div><div class="scroll" id="h-table">' + tableHisto() + '</div></div>';
       c.querySelector('#h-q').oninput = function (e) { etat.q = e.target.value; c.querySelector('#h-table').innerHTML = tableHisto(); };
+      var hc = c.querySelector('#h-corr'); if (hc) hc.onclick = dialogueCorrection;
+      App.$$('[data-annuler-h]', c).forEach(function (b) {
+        b.onclick = function () {
+          App.dialogue({
+            titre: 'Annuler la correction ' + b.getAttribute('data-annuler-h'), ok: 'Annuler la correction',
+            corps: '<p>L\'historique redevient celui des fichiers pour cet article et cette année, à la prochaine reprévision. La correction reste dans le journal.</p>',
+            surOk: function () {
+              return App.appel('annulerAjustement', ['HISTORIQUE', b.getAttribute('data-annuler-h'), App.idOperation()]).then(function (r) {
+                if (!r.ok) return r; App.toast('Correction annulée.'); recharger(); return r;
+              });
+            }
+          });
+        };
+      });
       var a = c.querySelector('#h-arret'); if (a) a.onclick = function () { dialogue('ARRET'); };
       var s = c.querySelector('#h-sub'); if (s) s.onclick = function () { dialogue('SUBSTITUTION'); };
       App.$$('[data-annuler]', c).forEach(function (b) {
@@ -74,6 +104,41 @@
             }
           });
         };
+      });
+    }
+
+    function dialogueCorrection() {
+      var ents = App.etat.session.entites, annees = etat.h.annees;
+      var champ = function (id, lib, extra) { return '<label for="k-' + id + '">' + lib + '</label><input id="k-' + id + '" ' + (extra || '') + '>'; };
+      App.dialogue({
+        titre: 'Corriger une période', ok: 'Enregistrer',
+        corps: '<label for="k-ent">Entité</label><select id="k-ent">' + ents.map(function (e) { return '<option' + (App.etat.entite === e ? ' selected' : '') + '>' + esc(e) + '</option>'; }).join('') + '</select>' +
+          champ('code', 'Code produit') +
+          '<label for="k-annee">Année</label><select id="k-annee">' + annees.map(function (a, i) { return '<option' + (i === annees.length - 1 ? ' selected' : '') + '>' + esc(a) + '</option>'; }).join('') + '</select>' +
+          '<p class="note" id="k-brut">Brut relevé : saisissez un code produit.</p>' +
+          '<label for="k-type">Type</label><select id="k-type">' + TYPES_HIST.map(function (t) { return '<option value="' + t[0] + '">' + t[1] + '</option>'; }).join('') + '</select>' +
+          champ('qte', 'Quantité corrigée (unités de stock)', 'inputmode="decimal"') + champ('motif', 'Motif (obligatoire)', 'maxlength="200"') + champ('com', 'Commentaire', 'maxlength="200"'),
+        surOk: function () {
+          var g = function (id) { var e = document.querySelector('#dlg #k-' + id); return e ? e.value.trim() : ''; };
+          return App.appel('ajouterAjustement', [{ nature: 'HISTORIQUE', entite: g('ent'), code: g('code'), annee: g('annee'), type: g('type'), corrigee: g('qte'), motif: g('motif'), commentaire: g('com') }, App.idOperation()]).then(function (r) {
+            if (!r.ok) return r;
+            App.toast('Correction ' + r.data.resultat.id + ' enregistrée.' + (r.data.resultat.avertissement ? ' ' + r.data.resultat.avertissement : ''));
+            recharger(); return r;
+          });
+        }
+      });
+      // Rappel du brut relevé pour l'article, l'entité et l'année choisis (parmi les articles chargés).
+      var majBrut = function () {
+        var g = function (id) { var e = document.querySelector('#dlg #k-' + id); return e ? e.value.trim() : ''; };
+        var a = etat.h.articles.filter(function (x) { return x.code === g('code') && x.entite === g('ent'); })[0];
+        var p = a && a.parAnnee[g('annee')];
+        var cible = document.querySelector('#dlg #k-brut');
+        if (!g('code')) cible.textContent = 'Brut relevé : saisissez un code produit.';
+        else cible.textContent = a ? 'Brut relevé' + (p && p.brute ? ' (déjà corrigé, brut ' + App.n0(p.brute.qte) + ')' : '') + ' : ' + (p ? App.n0(p.qte) : 'aucune vente cette année') + (a.libelle ? ' · ' + a.libelle : '') : 'Article absent des articles chargés (les plus vendus) : le serveur relèvera le brut à l\'enregistrement.';
+      };
+      ['ent', 'code', 'annee'].forEach(function (id) {
+        var e = document.querySelector('#dlg #k-' + id);
+        e.oninput = majBrut; e.onchange = majBrut;
       });
     }
 

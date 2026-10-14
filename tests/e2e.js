@@ -120,6 +120,24 @@ function page() {
       await p.waitForSelector('#h-subs td:has-text("2200001")');
       assert.strictEqual(env.lignes('PARAM_FICHIER_TEST_00001', 'SUBSTITUTIONS')[0]['Code ancien'], '2200001');
     });
+    await etape('historique : correction d\'une période (rupture) avec rappel du brut', async () => {
+      await p.click('#h-corr');
+      await p.waitForSelector('#dlg[open]');
+      await p.selectOption('#k-ent', 'Coop EUREDEN');
+      await p.fill('#k-code', '1109939');
+      await p.selectOption('#k-annee', '2025');
+      await p.waitForFunction(() => /16\s?900/.test(document.querySelector('#k-brut').innerText));
+      await p.click('#dlg-ok');
+      assert.ok(/quantité corrigée/i.test(await texte('#dlg-msg')), 'quantité exigée');
+      await p.fill('#k-qte', '20000');
+      await p.fill('#k-motif', 'Rupture de trois semaines');
+      await p.click('#dlg-ok');
+      await p.waitForSelector('#dlg:not([open])', { state: 'attached' });
+      await p.waitForSelector('[data-annuler-h]');
+      assert.ok(/Rupture/.test(await texte('main')));
+      assert.strictEqual(env.lignes('SORTIE1', 'CORRECTIONS_HISTO')[0]['Qte corrigee'], 20000);
+      assert.ok(/20\s000/.test(await texte('main')), 'le tableau doit afficher la quantité corrigée');
+    });
     await etape('alerte « saisies non appliquées » puis application', async () => {
       await p.click('#menu [data-v=dashboard]');
       await p.waitForSelector('.alert');
