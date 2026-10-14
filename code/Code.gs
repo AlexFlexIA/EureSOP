@@ -8,8 +8,7 @@ function doGet() {
   t.version = SOP.VERSION;
   return t.evaluate()
     .setTitle('Eureden S&OP')
-    .addMetaTag('viewport', 'width=device-width, initial-scale=1')
-    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1');
 }
 
 function include(nom) {

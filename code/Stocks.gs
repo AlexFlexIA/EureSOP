@@ -45,13 +45,13 @@ var Stocks = (function () {
     if (!s) return null;
     var cDate = colonne(s.headers, ['date stock', 'date'], true, 'Date stock'), cPlat = colonne(s.headers, ['plateforme'], true, 'Plateforme');
     var cCode = colonne(s.headers, ['code produit'], true, 'Code produit'), cStock = colonne(s.headers, ['stock'], true, 'Stock');
-    // Dernier relevé de chaque plateforme et article ; plusieurs lignes du même relevé (entités) s'additionnent.
+    // Dernier relevé de chaque plateforme (un article absent de ce relevé est à zéro) ; plusieurs lignes du même relevé (entités) s'additionnent.
     var plusRecent = {}, derniereDate = null;
     var lignes = [];
     s.rows.forEach(function (r) {
       var d = Cadencage.dateDe(r[cDate]), code = codeTexte(r[cCode]);
       if (!d || !code) return;
-      var k = txt(r[cPlat]) + '|' + code;
+      var k = txt(r[cPlat]);
       if (!plusRecent[k] || d.getTime() > plusRecent[k]) plusRecent[k] = d.getTime();
       if (!derniereDate || d.getTime() > derniereDate.getTime()) derniereDate = d;
       lignes.push({ k: k, t: d.getTime(), plat: txt(r[cPlat]), code: code, qte: nombre(r[cStock]) });
@@ -100,6 +100,7 @@ var Stocks = (function () {
 
   function projeter(acteur) {
     Auth.requireCap(acteur, 'consultation');
+    if (!Auth.inScope(acteur, 'consultation', {})) throw new AppError('CAPACITE_REFUSEE', 'Les stocks et les commandes fournisseurs portent sur tous les articles : ils demandent un périmètre global.');
     var idCampagne = txt(acteur.campagne['ID campagne']);
     var st = chargerStocks(idCampagne);
     if (!st) throw new AppError('STOCK_SANS_SOURCE', 'Aucune source de stocks active : déclarez dans SOURCES une ligne de nature STOCKS (ID du fichier, onglet) avec Actif import = OUI.');

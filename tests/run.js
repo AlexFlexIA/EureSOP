@@ -141,10 +141,9 @@ test('PREV ne peut pas créer une version validée', () => {
   const env = creerEnvStandard(); env.moi('guillaume@eureden.com');
   assert.strictEqual(erreur(env, "Versions.create(Auth.resolve(), {type: 'VALIDEE', libelle: 'x'}, 'o')"), 'CAPACITE_REFUSEE');
 });
-test('ADMIN crée une version validée : verrouillée', () => {
+test('une version validée ne se crée pas directement, même par ADMIN', () => {
   const env = creerEnvStandard(); env.moi('admin@eureden.com');
-  creer(env, 'VALIDEE');
-  assert.strictEqual(env.lignes('SORTIE1', 'VERSIONS')[0].Verrouillee, 'OUI');
+  assert.strictEqual(erreur(env, "Versions.create(Auth.resolve(), {type: 'VALIDEE', libelle: 'x'}, 'o')"), 'VALIDATION_PAR_ECRAN');
 });
 test('TC ne peut créer aucune version', () => {
   const env = creerEnvStandard(); env.moi('tc.ok@eureden.com');
@@ -2018,9 +2017,54 @@ test('ruptures : une rupture déclarée couvrant la semaine de rupture prévue m
   assert.strictEqual(art(proj(env2).data, DAP).declaree, false);
 });
 
+// ---------- Corrections de la relecture indépendante
+function ajouterAMOna(env) {
+  const profils = env.lignes('PARAM_FICHIER_TEST_00001', 'PROFILS').filter((p) => p.Role === 'PREV').map((p) => Object.assign({}, p, { Role: 'AM', 'Perimetre obligatoire': 'GLOBAL ou périmètre explicite' }));
+  const tous = env.lignes('PARAM_FICHIER_TEST_00001', 'PROFILS').concat(profils);
+  env.semer('PARAM_FICHIER_TEST_00001', 'PROFILS', tous);
+  const acces = env.lignes('PARAM_FICHIER_TEST_00001', 'ACCES').concat([{ 'ID campagne': 'SOP_2027_PAC2', 'Email Google': 'prev.ona@eureden.com', Role: 'AM', Entite: 'NEGOCE ONA', Actif: 'OUI' }]);
+  env.semer('PARAM_FICHIER_TEST_00001', 'ACCES', acces);
+  env.nouvelleExecution();
+  env.moi('prev.ona@eureden.com');
+}
+test('relecture : une reprévision refusée après validation ne touche pas aux corrections', () => {
+  const env = envPrev(); env.moi('admin@eureden.com');
+  reprev(env, [{ entite: 'Coop EUREDEN', code: DAP, quantite: -1000 }], 'rp1');
+  appel(env, 'validerVersion', [{ commentaire: 'c' }, 'v1']);
+  const avant = JSON.stringify(env.lignes('SORTIE1', 'AJUSTEMENTS_SEMAINE').concat(env.lignes('SORTIE1', 'JOURNAL')));
+  const r = reprev(env, [{ entite: 'Coop EUREDEN', code: DAP, quantite: -5 }], 'rp2');
+  assert.strictEqual(r.ok, false);
+  assert.strictEqual(r.code, 'VERSION_VERROUILLEE');
+  assert.strictEqual(JSON.stringify(env.lignes('SORTIE1', 'AJUSTEMENTS_SEMAINE').concat(env.lignes('SORTIE1', 'JOURNAL'))), avant);
+});
+test('relecture : une nouvelle version ne remplace pas la version validée et demande un périmètre global', () => {
+  const env = envPrev(); env.moi('admin@eureden.com');
+  reprev(env, [{ entite: 'Coop EUREDEN', code: DAP, quantite: -1000 }], 'rp1');
+  appel(env, 'validerVersion', [{ commentaire: 'c' }, 'v1']);
+  assert.strictEqual(appel(env, 'creerVersion', [{ type: 'STATISTIQUE', libelle: 'x' }, 'c1']).code, 'VERSION_DEJA_VERROUILLEE');
+  ajouterAMOna(env);
+  const r2 = appel(env, 'creerVersion', [{ type: 'STATISTIQUE', libelle: 'x' }, 'c2']);
+  assert.strictEqual(r2.code, 'CAPACITE_REFUSEE', JSON.stringify(r2));
+});
+test('relecture : le budget respecte le périmètre de l\'utilisateur', () => {
+  const env = envBud(); env.moi('admin@eureden.com');
+  ajouterAMOna(env);
+  const rr = appel(env, 'budget'); assert.ok(rr.ok, JSON.stringify(rr));
+  const r = rr.data;
+  assert.strictEqual(r.disponible, true);
+  r.mois.forEach((m) => assert.deepStrictEqual(Object.keys(m.parEntite), ['NEGOCE ONA']));
+});
+test('relecture : un TC avec Code technicien « * » n\'a pas d\'accès', () => {
+  const env = creerEnvStandard();
+  env.semer('PARAM_FICHIER_TEST_00001', 'ACCES', [{ 'ID campagne': 'SOP_2027_PAC2', 'Email Google': 'tc.joker@eureden.com', Role: 'TC', 'Code technicien': '*', Actif: 'OUI' }]);
+  env.moi('tc.joker@eureden.com');
+  assert.strictEqual(erreur(env, 'Auth.resolve()'), 'ACCES_REFUSE');
+});
+
 let echecs = 0;
 tests.forEach(({ nom, fn }) => {
   try { fn(); console.log('  ok   ' + nom); } catch (e) { echecs++; console.log('  ECHEC ' + nom + '\n        ' + (e.message || e).split('\n')[0]); }
 });
 console.log('\n' + (tests.length - echecs) + ' / ' + tests.length + ' tests réussis');
 process.exit(echecs ? 1 : 0);
+

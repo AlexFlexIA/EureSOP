@@ -144,10 +144,8 @@ var Previsions = (function () {
     return JSON.stringify([idCampagne, entite, code, PLATEFORME_NON_AFFECTEE]);
   }
 
-  // Écrit la version (verrou et reçu d'opération déjà pris par l'appelant) : PREVISION, INSTANTANES, journal.
-  function ecrireVersion(acteur, ctx, type, entree, idOperation, histo) {
-    var poids = ponderations();
-    var dec = precision();
+  // Refuse le remplacement d'une version verrouillée ou d'une prévision déjà validée (à appeler avant toute écriture).
+  function verifierRemplacable(ctx) {
     var courante = Versions.lignesCampagne(ctx).filter(function (r) { return norm(r.Scenario) === 'BASE' && norm(r.Statut) === 'COURANTE'; })[0];
     if (courante && yes(courante.Verrouillee)) {
       throw new AppError('VERSION_VERROUILLEE', 'La version courante ' + txt(courante['ID version']) + ' est verrouillée : elle ne peut pas être remplacée.');
@@ -155,6 +153,13 @@ var Previsions = (function () {
     if (Store.read(ctx.idSortie, 'PREVISION').rows.some(function (r) { return txt(r['Qte validee']) !== ''; })) {
       throw new AppError('PREVISION_VALIDEE', 'La prévision contient des quantités validées : elle ne peut plus être recalculée.');
     }
+  }
+
+  // Écrit la version (verrou et reçu d'opération déjà pris par l'appelant) : PREVISION, INSTANTANES, journal.
+  function ecrireVersion(acteur, ctx, type, entree, idOperation, histo) {
+    var poids = ponderations();
+    var dec = precision();
+    verifierRemplacable(ctx);
 
     var annees = histo.annees;
     var derniere = annees[annees.length - 1];
@@ -296,6 +301,7 @@ var Previsions = (function () {
     var lignes = Ajustements.preparerCorrections(entree.corrections || [], entree.motif, entree.commentaire);
     return sousVerrou(function () {
       return Operations.run(ctx.idSortie, acteur, idOperation, function () {
+        verifierRemplacable(ctx);
         var changements = Ajustements.remplacerCorrections(acteur, ctx, lignes, idOperation);
         var res = ecrireVersion(acteur, ctx, 'ARBITREE', { libelle: txt(entree.libelle), commentaire: txt(entree.commentaire), dateReunion: entree.dateReunion }, idOperation, histo);
         res.corrigees = changements.cree;

@@ -21,7 +21,7 @@ var Auth = (function () {
       return yes(ligne.Global) || Object.keys(SOP.PERIMETRE).some(function (k) { return txt(ligne[SOP.PERIMETRE[k]]) !== ''; });
     }
     var col = COLONNE_PERIMETRE[p];
-    return !!col && txt(ligne[col]) !== '';
+    return !!col && txt(ligne[col]) !== '' && txt(ligne[col]) !== '*';
   }
 
   function perimetreDe(ligne) {

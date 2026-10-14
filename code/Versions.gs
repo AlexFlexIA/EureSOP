@@ -68,6 +68,8 @@ var Versions = (function () {
     if (SOP.VERSION_TYPES.indexOf(type) < 0) throw new AppError('VERSION_TYPE_INVALIDE', 'Type de version inconnu : ' + txt(entree && entree.type));
     Auth.requireCap(acteur, SOP.TYPE_CAP[type]);
     Auth.requireWritable(acteur);
+    if (type === 'VALIDEE') throw new AppError('VALIDATION_PAR_ECRAN', 'Une version validée se crée par la validation du comité, pas directement.');
+    if (!Auth.inScope(acteur, SOP.TYPE_CAP[type], {})) throw new AppError('CAPACITE_REFUSEE', 'Une nouvelle version porte sur tous les articles : elle demande un périmètre global.');
     var libelle = txt(entree.libelle);
     if (!libelle) throw new AppError('LIBELLE_OBLIGATOIRE', 'Le libellé de la version est obligatoire.');
     var scenario = norm(entree.scenario) || 'BASE';
@@ -75,6 +77,8 @@ var Versions = (function () {
 
     return sousVerrou(function () {
       return Operations.run(ctx.idSortie, acteur, idOperation, function () {
+        var cour = courante(ctx);
+        if (cour && scenario === 'BASE' && yes(cour.Verrouillee)) throw new AppError('VERSION_DEJA_VERROUILLEE', 'La version ' + txt(cour['ID version']) + ' est validée et verrouillée : elle ne peut pas être remplacée.');
         return creerInterne(acteur, ctx, { type: type, scenario: scenario, libelle: libelle, dateReunion: entree.dateReunion, commentaire: entree.commentaire }, idOperation);
       });
     });

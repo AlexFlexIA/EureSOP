@@ -37,12 +37,19 @@ var Operations = {
       return { rejoue: true, resultat: JSON.parse(txt(existant.Resultat) || 'null') };
     }
     var resultat = fn();
+    // Une cellule Sheets tient 50 000 caractères : au-delà, le reçu ne garde que les valeurs simples.
+    var json = JSON.stringify(resultat);
+    if (json && json.length > 40000 && resultat && typeof resultat === 'object') {
+      var court = { tronque: true };
+      Object.keys(resultat).forEach(function (k) { var v = resultat[k]; if (v === null || typeof v !== 'object') court[k] = v; });
+      json = JSON.stringify(court);
+    }
     Store.append(idSortie, 'OPERATIONS', [{
       'ID operation': id,
       'Auteur': acteur.email,
       'Horodatage': maintenant(),
       'Lignes': 1,
-      'Resultat': JSON.stringify(resultat)
+      'Resultat': json
     }]);
     return { rejoue: false, resultat: resultat };
   }

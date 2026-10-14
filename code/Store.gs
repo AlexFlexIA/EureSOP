@@ -59,6 +59,15 @@ var Store = (function () {
 
   function invalider(id, tab) { delete memo[cle(id, tab)]; }
 
+  // En-têtes seuls (ligne 1) : évite de relire tout l'onglet avant chaque écriture.
+  function entetes(id, tab) {
+    var k = cle(id, tab);
+    if (memo[k]) return memo[k].headers;
+    var sh = sheet(id, tab);
+    var nc = sh.getLastColumn();
+    return nc ? sh.getRange(1, 1, 1, nc).getValues()[0].map(txt) : [];
+  }
+
   // Oublie classeurs et lectures mémorisées. Apps Script le fait de lui-même à chaque exécution ; les tests s'en servent.
   function reset() { books = {}; memo = {}; }
 
@@ -66,7 +75,7 @@ var Store = (function () {
   function append(id, tab, objets) {
     if (!objets.length) return;
     var sh = sheet(id, tab);
-    var headers = read(id, tab).headers;
+    var headers = entetes(id, tab);
     var lignes = objets.map(function (o) {
       Object.keys(o).forEach(function (k) {
         if (headers.indexOf(k) < 0) throw new AppError('COLONNE_INCONNUE', tab + ' : colonne « ' + k + ' » inconnue.');
@@ -74,6 +83,11 @@ var Store = (function () {
       return headers.map(function (h) { return o[h] === undefined || o[h] === null ? '' : o[h]; });
     });
     var debut = sh.getLastRow() + 1;
+    // Sheets refuse d'écrire hors de la grille : on l'agrandit avant.
+    if (typeof sh.getMaxRows === 'function') {
+      var manque = debut + lignes.length - 1 - sh.getMaxRows();
+      if (manque > 0) sh.insertRowsAfter(sh.getMaxRows(), manque);
+    }
     headers.forEach(function (h, c) {
       if (textuel(tab, h)) sh.getRange(debut, c + 1, lignes.length, 1).setNumberFormat('@');
     });
@@ -98,7 +112,7 @@ var Store = (function () {
   // Met à jour des cellules d'une ligne déjà lue (numéro de ligne dans _row).
   function updateRow(id, tab, ligne, valeurs) {
     var sh = sheet(id, tab);
-    var headers = read(id, tab).headers;
+    var headers = entetes(id, tab);
     Object.keys(valeurs).forEach(function (k) {
       var c = headers.indexOf(k);
       if (c < 0) throw new AppError('COLONNE_INCONNUE', tab + ' : colonne « ' + k + ' » inconnue.');

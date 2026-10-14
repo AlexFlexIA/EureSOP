@@ -267,7 +267,7 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
   // ---------- Export ----------
   // Fichier CSV lisible par Excel (séparateur point-virgule, accents conservés). lignes : tableau de tableaux.
   App.telecharger = function (nom, lignes) {
-    var cel = function (v) { var t = String(v === null || v === undefined ? '' : v); return /[";\n]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t; };
+    var cel = function (v) { var t = String(v === null || v === undefined ? '' : v); if (typeof v === 'string' && /^[=+\-@\t\r]/.test(t)) t = "'" + t; return /[";\n]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t; };
     var csv = '﻿' + lignes.map(function (l) { return l.map(cel).join(';'); }).join('\r\n');
     var blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
     var a = document.createElement('a');
@@ -356,7 +356,7 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
   function remplirEntete() {
     var s = App.etat.session;
     $('#camp').innerHTML = s.campagnes.map(function (c) { return '<option value="' + esc(c.id) + '"' + (c.id === s.campagne.id ? ' selected' : '') + '>' + esc(c.libelle) + '</option>'; }).join('');
-    $('#ent').innerHTML = '<option value="">' + (s.entites.length > 1 ? s.entites.join(' + ') : 'Toutes') + '</option>' +
+    $('#ent').innerHTML = '<option value="">' + (s.entites.length > 1 ? s.entites.map(esc).join(' + ') : 'Toutes') + '</option>' +
       (s.entites.length > 1 ? s.entites.map(function (e) { return '<option value="' + esc(e) + '">' + esc(e) + '</option>'; }).join('') : '');
     $('#ent').value = App.etat.entite;
     var st = s.campagne.statut;

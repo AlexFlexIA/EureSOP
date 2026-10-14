@@ -34,8 +34,12 @@ var Budget = (function () {
     var cMois = col('mois', true, 'Mois'), cEnt = col('entite', true, 'Entite'), cQte = col('quantite', false), cEur = col('valeur', false);
     if (!cQte && !cEur) throw new AppError('SOURCE_COLONNES', 'Budget : colonne manquante : Quantite ou Valeur euro.');
     var cAnnee = col('annee', false), cVersion = col('version', false);
+    var moisDe = function (v) {
+      if (v instanceof Date) return v.getFullYear() + '-' + ('0' + (v.getMonth() + 1)).slice(-2);
+      return txt(v);
+    };
     var lignes = d.rows.filter(function (r) {
-      var m = txt(r[cMois]);
+      var m = moisDe(r[cMois]);
       return /^\d{4}-\d{2}$/.test(m) && Number(m.slice(0, 4)) === annee && (!cAnnee || Number(r[cAnnee]) === annee || txt(r[cAnnee]) === '');
     });
     var versions = [];
@@ -43,11 +47,12 @@ var Budget = (function () {
     versions.sort();
     var voulue = txt(Params.reglages().BUDGET_VERSION);
     var version = voulue && versions.indexOf(voulue) >= 0 ? voulue : (versions.length ? versions[versions.length - 1] : '');
+    var autorise = Histo.filtre(acteur);
     var parMois = {};
     lignes.forEach(function (r) {
       if (cVersion && version && txt(r[cVersion]) !== version) return;
-      var m = txt(r[cMois]), e = txt(r[cEnt]);
-      if (!e) return;
+      var m = moisDe(r[cMois]), e = txt(r[cEnt]);
+      if (!e || !autorise(e, '')) return;
       var ligne = parMois[m] = parMois[m] || { mois: m, parEntite: {} };
       var x = ligne.parEntite[e] = ligne.parEntite[e] || { q: 0, eur: 0 };
       if (cQte) x.q += nombre(r[cQte]);
