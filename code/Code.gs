@@ -1,5 +1,7 @@
 // Point d'entrée de la web app et fonctions appelées par le navigateur (google.script.run).
-// Chaque fonction api* renvoie { ok: true, data } ou { ok: false, code, message }.
+// Le navigateur appelle api(nom, arguments, idCampagne) : la campagne choisie par l'utilisateur voyage avec chaque appel et
+// le serveur recalcule l'identité, les rôles et le périmètre pour cette campagne. Chaque réponse est { ok: true, data }
+// ou { ok: false, code, message }.
 
 function doGet() {
   var t = HtmlService.createTemplateFromFile('Index');
@@ -24,9 +26,9 @@ function reponse_(fn) {
   }
 }
 
-function apiDemarrage() {
-  return reponse_(function () {
-    var a = Auth.resolve();
+// Appels autorisés depuis le navigateur. Chaque fonction reçoit l'acteur résolu pour la campagne et la liste d'arguments.
+var API_ = {
+  demarrage: function (a) {
     return {
       version: SOP.VERSION,
       utilisateur: a.email,
@@ -37,56 +39,49 @@ function apiDemarrage() {
         anneePrevision: Number(a.campagne['Annee prevision']) || 0,
         statut: norm(a.campagne.Statut)
       },
+      seuilEcart: (function () { try { return Dashboard.seuil(); } catch (e) { return 15; } })(),
+      entites: (function () { try { return Histo.sources(txt(a.campagne['ID campagne'])).map(function (r) { return txt(r.Entite); }).filter(Boolean); } catch (e) { return []; } })(),
+      campagnes: a.campagnes.map(function (c) { return { id: txt(c['ID campagne']), libelle: txt(c.Libelle) || txt(c['ID campagne']), type: norm(c.Type), statut: norm(c.Statut) }; }),
       roles: a.roles.map(function (r) { return r.role; }),
       droits: a.caps
     };
+  },
+  versions: function (a) { return Versions.list(a); },
+  creerVersion: function (a, args) { return Versions.create(a, args[0], args[1]); },
+  verrouillerVersion: function (a, args) { return Versions.verrouiller(a, args[0], args[1]); },
+  controles: function (a) { return Controles.run(a); },
+  sources: function (a) { return Sources.etat(a); },
+  tableauDeBord: function (a) { return Dashboard.synthese(a); },
+  historique: function (a) { return Histo.synthese(a); },
+  prevision: function (a) { return Previsions.courante(a); },
+  calculerStatistique: function (a, args) { return Previsions.calculer(a, args[0] || {}, args[1]); },
+  arbitrer: function (a, args) { return Previsions.arbitrer(a, args[0] || {}, args[1]); },
+  reprevision: function (a, args) { return Previsions.reprevision(a, args[0] || {}, args[1]); },
+  essaiPonderation: function (a) { return Previsions.essai(a); },
+  ajustements: function (a) { return Ajustements.lister(a); },
+  ajouterAjustement: function (a, args) { return Ajustements.creer(a, args[0], args[1]); },
+  annulerAjustement: function (a, args) { return Ajustements.annuler(a, args[0], args[1], args[2]); }
+};
+
+function api(nom, args, idCampagne) {
+  return reponse_(function () {
+    var f = Object.prototype.hasOwnProperty.call(API_, nom) ? API_[nom] : null;
+    if (!f) throw new AppError('API_INCONNUE', 'Appel inconnu : ' + txt(nom).slice(0, 40) + '.');
+    return f(Auth.resolve(idCampagne), Array.isArray(args) ? args : []);
   });
 }
 
-function apiVersions() {
-  return reponse_(function () { return Versions.list(Auth.resolve()); });
-}
-
-function apiCreerVersion(entree, idOperation) {
-  return reponse_(function () { return Versions.create(Auth.resolve(), entree, idOperation); });
-}
-
-function apiVerrouillerVersion(idVersion, idOperation) {
-  return reponse_(function () { return Versions.verrouiller(Auth.resolve(), idVersion, idOperation); });
-}
-
-function apiControles() {
-  return reponse_(function () { return Controles.run(Auth.resolve()); });
-}
-
-function apiHistorique() {
-  return reponse_(function () { return Histo.synthese(Auth.resolve()); });
-}
-
-function apiPrevision() {
-  return reponse_(function () { return Previsions.courante(Auth.resolve()); });
-}
-
-function apiCalculerStatistique(entree, idOperation) {
-  return reponse_(function () { return Previsions.calculer(Auth.resolve(), entree || {}, idOperation); });
-}
-
-function apiEssaiPonderation() {
-  return reponse_(function () { return Previsions.essai(Auth.resolve()); });
-}
-
-function apiArbitrer(entree, idOperation) {
-  return reponse_(function () { return Previsions.arbitrer(Auth.resolve(), entree || {}, idOperation); });
-}
-
-function apiAjustements() {
-  return reponse_(function () { return Ajustements.lister(Auth.resolve()); });
-}
-
-function apiAjouterAjustement(entree, idOperation) {
-  return reponse_(function () { return Ajustements.creer(Auth.resolve(), entree, idOperation); });
-}
-
-function apiAnnulerAjustement(nature, id, idOperation) {
-  return reponse_(function () { return Ajustements.annuler(Auth.resolve(), nature, id, idOperation); });
-}
+// Fonctions historiques, conservées pour les tests et les appels directs.
+function apiDemarrage(idCampagne) { return api('demarrage', [], idCampagne); }
+function apiVersions() { return api('versions', []); }
+function apiCreerVersion(entree, idOperation) { return api('creerVersion', [entree, idOperation]); }
+function apiVerrouillerVersion(idVersion, idOperation) { return api('verrouillerVersion', [idVersion, idOperation]); }
+function apiControles() { return api('controles', []); }
+function apiHistorique() { return api('historique', []); }
+function apiPrevision() { return api('prevision', []); }
+function apiCalculerStatistique(entree, idOperation) { return api('calculerStatistique', [entree, idOperation]); }
+function apiArbitrer(entree, idOperation) { return api('arbitrer', [entree, idOperation]); }
+function apiEssaiPonderation() { return api('essaiPonderation', []); }
+function apiAjustements() { return api('ajustements', []); }
+function apiAjouterAjustement(entree, idOperation) { return api('ajouterAjustement', [entree, idOperation]); }
+function apiAnnulerAjustement(nature, id, idOperation) { return api('annulerAjustement', [nature, id, idOperation]); }

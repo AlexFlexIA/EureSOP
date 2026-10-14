@@ -41,7 +41,26 @@ var Auth = (function () {
     return perimetreSatisfait(ligne, profil);
   }
 
-  function resolve() {
+  function campagnePourId(idCampagne) {
+    if (!txt(idCampagne)) return Params.campagneSelectionnee();
+    var c = Params.table('CAMPAGNES').filter(function (r) { return txt(r['ID campagne']) === txt(idCampagne); })[0];
+    if (!c) throw new AppError('CAMPAGNE_INCONNUE', 'La campagne ' + txt(idCampagne).slice(0, 40) + ' n\'existe pas dans CAMPAGNES.');
+    return c;
+  }
+
+  // Campagnes sur lesquelles l'adresse a au moins une ligne d'accès valide (les administrateurs initiaux les voient toutes).
+  function campagnesAccessibles(email, profils) {
+    var admin = admins().indexOf(email) >= 0;
+    return Params.table('CAMPAGNES').filter(function (c) {
+      var id = txt(c['ID campagne']);
+      if (!id) return false;
+      if (admin) return true;
+      return Params.acces(id).some(function (l) { return txt(l['Email Google']).toLowerCase() === email && ligneValide(l, profils); });
+    });
+  }
+
+  // idCampagne facultatif : sans lui, la campagne marquée Selectionnee dans CAMPAGNES.
+  function resolve(idCampagne) {
     var email = txt(Session.getActiveUser().getEmail()).toLowerCase();
     if (!email) {
       throw new AppError('IDENTITE_INDISPONIBLE', 'Votre adresse n\'a pas pu être lue. L\'application doit être déployée pour l\'organisation, exécutée au nom du déployeur.');
@@ -52,15 +71,22 @@ var Auth = (function () {
     var autorise = domaines.some(function (d) { return email.slice(-(d.length + 1)) === '@' + d; });
     if (!autorise) throw new AppError('DOMAINE_REFUSE', 'Ce compte n\'appartient pas à un domaine autorisé.');
 
-    var campagne = Params.campagneSelectionnee();
     var profils = Params.profils();
-    var lignes = Params.acces(campagne['ID campagne']).filter(function (l) {
-      return txt(l['Email Google']).toLowerCase() === email && ligneValide(l, profils);
-    });
-    var roles = lignes.map(function (l) { return { role: norm(l.Role), perimetre: perimetreDe(l) }; });
     var estAdminInitial = admins().indexOf(email) >= 0;
-    if (estAdminInitial && !roles.some(function (r) { return r.role === 'ADMIN'; })) {
-      roles.push({ role: 'ADMIN', perimetre: { global: true } });
+    var rolesPour = function (c) {
+      var lignes = Params.acces(c['ID campagne']).filter(function (l) {
+        return txt(l['Email Google']).toLowerCase() === email && ligneValide(l, profils);
+      });
+      var r = lignes.map(function (l) { return { role: norm(l.Role), perimetre: perimetreDe(l) }; });
+      if (estAdminInitial && !r.some(function (x) { return x.role === 'ADMIN'; })) r.push({ role: 'ADMIN', perimetre: { global: true } });
+      return r;
+    };
+    var campagne = campagnePourId(idCampagne);
+    var roles = rolesPour(campagne);
+    // Sans campagne demandée et sans accès à la campagne par défaut : première campagne accessible.
+    if (!roles.length && !txt(idCampagne)) {
+      var autre = campagnesAccessibles(email, profils)[0];
+      if (autre) { campagne = autre; roles = rolesPour(autre); }
     }
     if (!roles.length) throw new AppError('ACCES_REFUSE', 'Aucun accès actif pour ' + email + ' sur la campagne ' + txt(campagne['ID campagne']) + '.');
 
@@ -68,7 +94,7 @@ var Auth = (function () {
     Object.keys(SOP.CAPS).forEach(function (cap) {
       caps[cap] = roles.some(function (r) { return profils[r.role] && profils[r.role][cap]; });
     });
-    return { email: email, campagne: campagne, roles: roles, caps: caps, profils: profils };
+    return { email: email, campagne: campagne, roles: roles, caps: caps, profils: profils, campagnes: campagnesAccessibles(email, profils) };
   }
 
   function requireCap(actor, cap) {

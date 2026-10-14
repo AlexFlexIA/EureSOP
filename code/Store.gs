@@ -78,6 +78,12 @@ var Store = (function () {
     invalider(id, tab);
   }
 
+  // Taille d'un onglet sans lire son contenu : { lignes, colonnes }. Lance ONGLET_ABSENT ou CLASSEUR_INACCESSIBLE.
+  function apercu(id, tab) {
+    var sh = sheet(id, tab);
+    return { lignes: Math.max(0, sh.getLastRow() - 1), colonnes: sh.getLastColumn() };
+  }
+
   // Efface toutes les lignes de données, l'en-tête est conservé.
   function viderDonnees(id, tab) {
     var sh = sheet(id, tab);
@@ -111,5 +117,5 @@ var Store = (function () {
     return { ok: manquants.length === 0 && inconnus.length === 0, manquants: manquants, inconnus: inconnus, ordre: ordre };
   }
 
-  return { read: read, append: append, viderDonnees: viderDonnees, updateRow: updateRow, checkHeaders: checkHeaders, invalider: invalider };
+  return { read: read, append: append, apercu: apercu, viderDonnees: viderDonnees, updateRow: updateRow, checkHeaders: checkHeaders, invalider: invalider };
 })();

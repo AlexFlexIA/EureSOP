@@ -126,3 +126,27 @@ Règles :
 - Les semaines saisies sur corrections et événements sont conservées pour le cadençage ; au niveau du PAC seule la quantité compte.
 - Droits : correction et événement demandent la capacité de correction de la prévision, arrêt et substitution la validation de gamme ou l'arbitrage, tous avec un périmètre global. Annulation : mêmes droits. Journal et reçus d'opération comme ailleurs.
 - Recalculer la statistique crée une version STATISTIQUE sans effets : les saisies actives sont conservées, il suffit de réappliquer.
+
+## Organisation de l'interface (v0.2.0)
+
+Interface sur le modèle de la maquette : en-tête (campagne, entité, unité), menu à gauche, écrans.
+
+| Fichier | Rôle |
+|---|---|
+| `Index.html` | Ossature de la page (en-tête, menu, zone de contenu, boîte de dialogue) |
+| `Styles.html` | Feuille de style (charte Eureden) |
+| `ClientCore.html` | Appels serveur (`api`), unités, filtres, navigation, boîte de dialogue, export CSV, graphique |
+| `VueDashboard.html` | Tableau de bord |
+| `VuePrevision.html` | Prévision & arbitrage (corrections dans le tableau, reprévision, événements) |
+| `VueHistorique.html` | Historique, arrêts de produit et substitutions |
+| `VueAutres.html` | Versions & fiabilité, sources de données, contrôles, écrans à venir |
+| `Code.gs` | `doGet` et point d'entrée unique `api(nom, arguments, idCampagne)` |
+
+- Le navigateur n'appelle que `api` : chaque appel recalcule l'identité, les rôles et le périmètre pour la campagne choisie.
+- Unités : Quantité (unités de stock), Hectares, Valeur €. Hectares et valeur d'une quantité prévue se déduisent de la dernière année de vente de l'article. « Tonnes » viendra avec le catalogue (poids).
+- L'ancien fichier `Client.html` est supprimé : retirez-le d'Apps Script.
+
+## Tests
+
+- `node tests/run.js` : tests unitaires du serveur (feuilles simulées en mémoire).
+- `node tests/e2e.js` : test de bout en bout, vrai navigateur (Playwright) branché sur le code serveur. `CAPTURES=<dossier>` enregistre une capture par étape.

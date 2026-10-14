@@ -1,0 +1,98 @@
+<script>
+(function () {
+  'use strict';
+  var App = window.App, esc = App.esc;
+
+  var COULEURS = { n1: '#8A8A8A', stat: '#BAD264', ret: '#514F21' };
+
+  function dessiner(c, d, fiab) {
+    var s = App.etat.session, t = App.totaux(d.totaux);
+    var ref = d.anneeReference || 'N-1';
+    var prevue = s.campagne.anneePrevision || '';
+    var alertes = d.alertes || [];
+    var n = { ERREUR: 0, ATTENTION: 0, INFO: 0 };
+    alertes.forEach(function (a) { n[a.niveau] = (n[a.niveau] || 0) + 1; });
+    var ouvertes = n.ERREUR + n.ATTENTION;
+
+    var kpiFiab;
+    if (fiab === undefined) kpiFiab = ['Fiabilité de la méthode', '…', App.pill('info', 'Calcul en cours', 'ℹ')];
+    else if (!fiab) kpiFiab = ['Fiabilité de la méthode', '—', App.pill('info', 'Il faut deux années d\'historique', 'ℹ')];
+    else {
+      var r = fiab.resultats.filter(function (x) { return x.actuelle; })[0] || fiab.resultats[fiab.meilleur];
+      var b = Math.round(r.biais * 100);
+      kpiFiab = ['Fiabilité de la méthode (test ' + fiab.anneeTestee + ')', 'Erreur ' + Math.round(r.erreur * 100) + ' %',
+        App.pill('info', 'Biais ' + (b > 0 ? '+' : '') + b + ' % (' + (b > 0 ? 'sur' : 'sous') + '-prévision)', 'ℹ')];
+    }
+    var kpis = [
+      ['Prévision retenue' + (prevue ? ' ' + prevue : ''), App.fmt(t.retenue), d.version ? App.pill(t.retenue >= t.n1 ? 'ok' : 'warn', 'vs ' + ref + ' ' + (t.n1 ? App.pct((t.retenue / t.n1 - 1) * 100) : '—'), t.retenue >= t.n1 ? '▲' : '▼') : App.pill('info', 'Pas encore calculée', 'ℹ')],
+      ['Budget', 'Non connecté', App.pill('info', 'Source BUDGET à déclarer', 'ℹ')],
+      kpiFiab,
+      ['Alertes ouvertes', String(ouvertes), (n.ERREUR ? App.pill('bad', n.ERREUR + ' erreur(s)', '✖') + ' ' : '') + (n.ATTENTION ? App.pill('warn', n.ATTENTION + ' à vérifier', '⚠') : (ouvertes ? '' : App.pill('ok', 'Rien à signaler', '✓')))]
+    ];
+    var kpiHtml = kpis.map(function (k) { return '<div class="card kpi"><div class="l">' + esc(k[0]) + '</div><div class="v">' + esc(k[1]) + '</div><div class="d">' + k[2] + '</div></div>'; }).join('');
+
+    var lignes = d.totaux.filter(function (x) { return !App.etat.entite || x.entite === App.etat.entite; });
+    var cle = App.UNITES[App.etat.unite].cle;
+    var series = [
+      { nom: 'Réalisé ' + ref, couleur: COULEURS.n1, valeurs: lignes.map(function (x) { return x[cle].n1; }) },
+      { nom: 'Statistique', couleur: COULEURS.stat, valeurs: lignes.map(function (x) { return x[cle].statistique; }) },
+      { nom: 'Retenue', couleur: COULEURS.ret, valeurs: lignes.map(function (x) { return x[cle].retenue; }) }
+    ];
+    var graphique = lignes.length ? App.barres(lignes.map(function (x) { return x.entite; }), series) + App.legende(series) : '<div class="vide">Pas de prévision à afficher.</div>';
+
+    var al = alertes.length ? alertes.map(function (a) {
+      var nv = App.NIVEAUX[a.niveau] || App.NIVEAUX.INFO;
+      return '<div class="alert">' + App.pill(nv[0], a.titre, nv[1]) + '<span>' + esc(a.detail) + '</span></div>';
+    }).join('') : '<div class="vide">Aucune alerte.</div>';
+
+    var lecture = function (x) {
+      var m = x[cle];
+      if (!d.version) return App.pill('info', 'À calculer', 'ℹ');
+      if (m.n1 && Math.abs(m.retenue / m.n1 - 1) * 100 > (s.seuilEcart || 15)) return App.pill('warn', 'Écart ' + ref + ' élevé', '⚠');
+      return App.pill('ok', 'Dans la cible', '✓');
+    };
+    var tableau = '<thead><tr><th>Entité</th><th class="n">Articles</th><th class="n">Réalisé ' + esc(ref) + '</th><th class="n">Statistique</th><th class="n">Retenue</th><th class="n">vs ' + esc(ref) + '</th><th>Lecture</th></tr></thead><tbody>' +
+      lignes.map(function (x) {
+        var m = x[cle];
+        return '<tr><td><b>' + esc(x.entite) + '</b></td><td class="n">' + App.n0(x.articles) + '</td><td class="n">' + App.fmt(m.n1) + '</td><td class="n">' + App.fmt(m.statistique) + '</td><td class="n"><b>' + App.fmt(m.retenue) + '</b></td><td class="n">' + (m.n1 ? App.pct((m.retenue / m.n1 - 1) * 100) : '—') + '</td><td>' + lecture(x) + '</td></tr>';
+      }).join('') +
+      (lignes.length > 1 ? '<tr class="tot"><td>Total</td><td class="n">' + App.n0(t.articles) + '</td><td class="n">' + App.fmt(t.n1) + '</td><td class="n">' + App.fmt(t.statistique) + '</td><td class="n">' + App.fmt(t.retenue) + '</td><td class="n">' + (t.n1 ? App.pct((t.retenue / t.n1 - 1) * 100) : '—') + '</td><td></td></tr>' : '') + '</tbody>';
+
+    var tl = d.echeances.length ? '<div class="tl">' + d.echeances.map(function (e) {
+      var dates = e.debut ? (e.debut + (e.fin ? ' → ' + e.fin : '')) : '';
+      return '<div class="' + (e.courante ? 'cur' : '') + '">' + esc(e.libelle) + '<br><span class="note">' + esc(e.statut.toLowerCase()) + (dates ? '<br>' + esc(dates) : '') + '</span></div>';
+    }).join('') + '</div>' : '<div class="vide">Aucune campagne dans CAMPAGNES.</div>';
+
+    var v = d.version;
+    c.innerHTML = '<h1>Bonjour <span class="acc">' + esc(prenom(s.utilisateur)) + '</span></h1>' +
+      '<p class="sub">Comité S&amp;OP – <b>' + esc(s.campagne.libelle || s.campagne.id) + '</b>' + (prevue ? ' · prévision ' + esc(prevue) : '') + (v ? ' · version ' + esc(App.typeVersion(v.type).toLowerCase()) + ' ' + esc(v.id) + ' du ' + esc(v.creeLe.slice(0, 10)) : ' · aucune version') + '</p>' +
+      '<div class="grid g4">' + kpiHtml + '</div>' +
+      '<div class="grid g2" style="margin-top:16px"><div class="card"><h2>Prévision par entité <small>' + esc(App.UNITES[App.etat.unite].lbl.toLowerCase()) + '</small></h2>' + graphique + '</div>' +
+      '<div class="card"><h2>Alertes automatiques <small>' + alertes.length + ' au total</small></h2>' + al + '</div></div>' +
+      '<div class="card" style="margin-top:16px"><h2>Vue comité par entité <small>maille entité</small></h2><div class="scroll"><table>' + tableau + '</table></div>' +
+      '<p class="note">La vue par marché viendra avec le catalogue des produits.' + (App.etat.unite !== 'Q' ? ' Hectares et valeur sont déduits de la dernière année de vente de chaque article.' : '') + '</p></div>' +
+      '<div class="card"><h2>Campagnes <small>statut de chaque campagne</small></h2>' + tl + '</div>';
+  }
+
+  // Le prénom se déduit de l'adresse (prenom.nom@...). Sans point : la partie avant @.
+  function prenom(email) {
+    var local = String(email || '').split('@')[0].split('.')[0];
+    return local ? local.charAt(0).toUpperCase() + local.slice(1) : '';
+  }
+
+  App.vues.dashboard = function (c) {
+    var etat = { d: null, fiab: undefined };
+    var redessiner = function () { if (etat.d) dessiner(c, etat.d, etat.fiab); };
+    App.etat.redessiner = redessiner;
+    App.donnees('tableauDeBord').then(function (r) {
+      if (App.etat.ecran !== 'dashboard') return;
+      if (!r.ok) { App.erreur(c, r); return; }
+      etat.d = r.data; redessiner();
+      App.donnees('essaiPonderation').then(function (f) {
+        if (App.etat.ecran !== 'dashboard') return;
+        etat.fiab = f.ok ? f.data : null; redessiner();
+      });
+    });
+  };
+})();
+</script>

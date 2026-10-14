@@ -1,0 +1,265 @@
+<script>
+(function () {
+  'use strict';
+  var App = window.App, esc = App.esc;
+  var MOTIFS = ['Politique commerciale (polco)', 'Promotion', 'Contrainte réglementaire', 'Objectif budget', 'Rupture / appro fournisseur', 'Autre'];
+  var TYPES_EVT = [['POLCO', 'Polco'], ['PROMO', 'Promotion'], ['GRAND_COMPTE', 'Grand compte'], ['APPEL_OFFRES', 'Appel d\'offres'], ['REGLEMENTAIRE', 'Réglementaire']];
+  var cle = function (a) { return a.entite + '|' + a.code; };
+
+  App.vues.prevision = function (c) {
+    var etat = { d: null, aj: null, mode: 'q', modif: {}, sel: '', q: '', seulement: false };
+    var droits = App.etat.session.droits;
+    var ouverte = ['GELEE', 'CLOTUREE'].indexOf(App.etat.session.campagne.statut) < 0;
+
+    // Correction nette actuellement appliquée à un article, en quantité de stock.
+    function appliquee(a) { return a.correction; }
+    function nouvelle(a) {
+      var m = etat.modif[cle(a)];
+      if (!m) return appliquee(a);
+      if (m.pourcent !== undefined) return a.statistique * m.pourcent / 100;
+      return m.quantite;
+    }
+    function retenueLive(a) { return Math.max(0, a.statistique + a.evenements + a.substitution + nouvelle(a)); }
+    var ratio = function (a) { return App.etat.unite === 'Q' ? 1 : (App.etat.unite === 'H' ? a.rh : a.re); };
+
+    function valeurCellule(a) {
+      var q = nouvelle(a);
+      if (!q && !etat.modif[cle(a)]) return '';
+      if (etat.mode === 'p') return a.statistique ? +(q / a.statistique * 100).toFixed(1) : '';
+      return +(q * ratio(a)).toFixed(App.etat.unite === 'Q' ? 1 : 0);
+    }
+
+    function articlesVisibles() {
+      var q = etat.q.toLowerCase();
+      return etat.d.articles.filter(function (a) {
+        if (App.etat.entite && a.entite !== App.etat.entite) return false;
+        if (q && a.code.toLowerCase().indexOf(q) < 0 && a.libelle.toLowerCase().indexOf(q) < 0) return false;
+        if (etat.seulement && !(a.evenements || a.correction || a.substitution || etat.modif[cle(a)])) return false;
+        return true;
+      });
+    }
+
+    function statut(a) {
+      if (etat.modif[cle(a)]) return App.pill('brand', 'À enregistrer', '●');
+      var t = etat.d.version.type;
+      return t === 'VALIDEE' ? App.pill('ok', 'Validée', '✓') : t === 'ARBITREE' ? App.pill('brand', 'Arbitrée', '●') : App.pill('info', 'Statistique', '✎');
+    }
+
+    function tableau() {
+      var lignes = articlesVisibles();
+      var ref = etat.d.anneeReference || 'N-1';
+      var peut = (droits.arbitrage && droits.correctionPrevision) && ouverte && !etat.d.version.verrouillee;
+      var corps = lignes.slice(0, 200).map(function (a) {
+        var k = cle(a), v = valeurCellule(a);
+        var inactif = !peut || (etat.mode === 'p' ? !a.statistique : !ratio(a));
+        var l = retenueLive(a);
+        var n1 = App.valArt(a, 'n1');
+        var ret = l * (App.etat.unite === 'Q' ? 1 : ratio(a));
+        var cel = function (champ) { var x = App.valArt(a, champ); return '<td class="n">' + (x ? (x > 0 ? '+' : '') + App.fmt(x) : '–') + '</td>'; };
+        return '<tr class="cliquable' + (etat.sel === k ? ' sel' : '') + '" data-k="' + esc(k) + '"><td><b>' + esc(a.libelle || a.code) + '</b><br><span class="note">' + esc(a.code) + '</span></td><td>' + esc(a.entite) + '</td>' +
+          '<td class="n">' + App.fmt(n1) + '</td><td class="n">' + App.fmt(App.valArt(a, 'statistique')) + '</td>' + cel('evenements') + cel('substitution') +
+          '<td class="n"><input class="cell' + (etat.modif[k] ? ' changed' : '') + '" type="text" inputmode="decimal" value="' + esc(v) + '" placeholder="0" data-k="' + esc(k) + '"' + (inactif ? ' disabled title="Correction impossible ici (droits, unité sans coefficient, ou statistique nulle)"' : '') + ' aria-label="Correction ' + esc(a.libelle || a.code) + '"></td>' +
+          '<td class="n"><b>' + App.fmt(ret) + '</b></td><td class="n">' + (n1 ? App.variation(ret, n1) : '—') + '</td><td>' + statut(a) + '</td></tr>';
+      }).join('');
+      var unite = etat.mode === 'p' ? '%' : App.UNITES[App.etat.unite].lbl.toLowerCase();
+      return '<table><thead><tr><th>Article</th><th>Entité</th><th class="n">Réalisé ' + esc(ref) + '</th><th class="n">Statistique</th><th class="n">Événements</th><th class="n">Substitutions</th><th class="n">Correction (' + esc(unite) + ')</th><th class="n">Retenue</th><th class="n">vs ' + esc(ref) + '</th><th>Statut</th></tr></thead><tbody>' + (corps || '<tr><td colspan="10" class="note">Aucun article ne correspond.</td></tr>') + '</tbody></table>' +
+        '<p class="note">' + lignes.length + ' article(s)' + (lignes.length > 200 ? ', 200 affichés : affinez la recherche' : '') + (etat.d.tronque ? ' · ' + etat.d.nbArticles + ' articles au total, les ' + etat.d.articles.length + ' premiers par quantité sont chargés' : '') + '.</p>';
+    }
+
+    function detail() {
+      var a = etat.d.articles.filter(function (x) { return cle(x) === etat.sel; })[0];
+      if (!a) return '<h2>Détail article</h2><p class="note">Cliquez sur une ligne pour voir les sources et les saisies de l\'article.</p>';
+      var peutAnnuler = droits.correctionPrevision && ouverte;
+      var sais = [];
+      etat.aj.corrections.filter(function (x) { return x.code === a.code && x.entite === a.entite; }).forEach(function (x) {
+        sais.push({ id: x.id, nature: 'CORRECTION', texte: 'Correction ' + (x.quantite !== '' ? (Number(x.quantite) > 0 ? '+' : '') + App.n0(Number(x.quantite)) : (Number(x.pourcent) > 0 ? '+' : '') + x.pourcent + ' %') + ' – ' + x.motif });
+      });
+      etat.aj.evenements.filter(function (x) { return x.code === a.code && x.entite === a.entite; }).forEach(function (x) {
+        sais.push({ id: x.id, nature: 'EVENEMENT', texte: x.type + ' ' + (x.quantite !== '' ? (Number(x.quantite) > 0 ? '+' : '') + App.n0(Number(x.quantite)) : (Number(x.pourcent) > 0 ? '+' : '') + x.pourcent + ' %') + (x.commentaire ? ' – ' + x.commentaire : '') });
+      });
+      etat.aj.substitutions.filter(function (x) { return (x.ancien === a.code || x.nouveau === a.code) && (!x.entite || x.entite === a.entite); }).forEach(function (x) {
+        sais.push({ id: x.id, nature: 'SUBSTITUTION', texte: x.nature === 'ARRET' ? 'Arrêt du produit (' + x.taux + ' %)' : (x.ancien === a.code ? 'Remplacé par ' + x.nouveau : 'Remplace ' + x.ancien) + ' (' + x.taux + ' %)' });
+      });
+      var ligne = function (lib, v, cls) { return '<tr' + (cls ? ' class="' + cls + '"' : '') + '><td>' + lib + '</td><td class="n">' + v + '</td></tr>'; };
+      var sg = function (champ) { var x = App.valArt(a, champ); return x ? (x > 0 ? '+' : '') + App.fmt(x) : '–'; };
+      return '<h2>' + esc(a.libelle || a.code) + ' <small>' + esc(a.code) + ' · ' + esc(a.entite) + '</small></h2><div class="grid g2"><div><table><thead><tr><th>Source</th><th class="n">Volume</th></tr></thead><tbody>' +
+        ligne('Réalisé ' + esc(etat.d.anneeReference || 'N-1'), App.fmt(App.valArt(a, 'n1'))) + ligne('Statistique (moyenne pondérée)', App.fmt(App.valArt(a, 'statistique'))) +
+        ligne('Événements', sg('evenements')) + ligne('Corrections', sg('correction')) + ligne('Substitutions et arrêts', sg('substitution')) +
+        ligne('Retenue', App.fmt(App.valArt(a, 'retenue')), 'tot') + '</tbody></table></div><div><b>Saisies actives</b>' +
+        (sais.length ? '<ul class="liste" style="margin-top:8px">' + sais.map(function (x) { return '<li>' + esc(x.id) + ' · ' + esc(x.texte) + (peutAnnuler ? ' <button class="btn petit" type="button" data-annuler="' + esc(x.id) + '" data-nature="' + x.nature + '">Annuler</button>' : '') + '</li>'; }).join('') + '</ul>' : '<p class="note">Aucune saisie sur cet article.</p>') + '</div></div>';
+    }
+
+    function dessiner() {
+      if (!etat.d) return;
+      var d = etat.d;
+      var nbModif = Object.keys(etat.modif).length;
+      if (!d.version) {
+        c.innerHTML = '<h1>Prévision &amp; arbitrage</h1><p class="sub">Maille article. Chaque enregistrement crée une nouvelle version.</p><div class="card"><h2>Aucune prévision pour le moment</h2><p>Le calcul lit l\'historique, crée une version « Statistique » et remplit la prévision.</p>' +
+          (droits.arbitrage && ouverte ? '<button class="btn pri" id="p-stat" type="button">Calculer la prévision statistique</button> <span id="p-msg" class="note"></span>' : '<p class="note">Votre rôle ne permet pas de lancer le calcul.</p>') + '</div>';
+        brancherStat(); return;
+      }
+      var peutArbitrer = droits.arbitrage && droits.correctionPrevision && ouverte && !d.version.verrouillee;
+      var v = d.version;
+      c.innerHTML = '<h1>Prévision &amp; arbitrage</h1><p class="sub">Maille article. La correction s\'ajoute à la statistique ; chaque enregistrement crée une nouvelle version. Version courante : <b>' + esc(v.id) + '</b> ' + App.pill('brand', App.typeVersion(v.type), '●') + (v.verrouillee ? ' ' + App.pill('ok', 'Verrouillée', '■') : '') + '</p>' +
+        '<div class="card"><div class="row" style="margin-bottom:10px"><div class="seg" role="group" aria-label="Forme de la correction"><button type="button" data-m="q" aria-pressed="' + (etat.mode === 'q') + '">Quantité</button><button type="button" data-m="p" aria-pressed="' + (etat.mode === 'p') + '">En %</button></div>' +
+        '<label class="ctl" style="margin:0">Rechercher<input id="p-q" type="search" maxlength="60" value="' + esc(etat.q) + '" placeholder="code ou libellé"></label>' +
+        '<label class="ligne" style="margin:0"><input type="checkbox" id="p-seul"' + (etat.seulement ? ' checked' : '') + '> Seulement les articles modifiés</label><div class="spacer"></div>' +
+        '<span class="pill ' + (nbModif ? 'p-brand' : 'p-info') + '">' + (nbModif ? nbModif + ' modification' + (nbModif > 1 ? 's' : '') + ' non enregistrée' + (nbModif > 1 ? 's' : '') : 'Aucune modification') + '</span>' +
+        '<button class="btn" id="p-csv" type="button">⬇ Exporter</button>' +
+        (droits.arbitrage && ouverte && !v.verrouillee ? '<button class="btn" id="p-stat" type="button">Recalculer la statistique</button>' : '') +
+        (droits.correctionPrevision && ouverte && !v.verrouillee ? '<button class="btn" id="p-evt" type="button">+ Événement</button>' : '') +
+        (peutArbitrer ? '<button class="btn pri" id="p-save" type="button">Enregistrer la reprévision…</button>' : '') + '</div>' +
+        '<span id="p-msg" class="note" role="status"></span><div class="scroll" id="p-table">' + tableau() + '</div></div>' +
+        '<div class="card" id="p-detail">' + detail() + '</div>';
+      brancher();
+    }
+
+    function recharger() {
+      App.invalider();
+      return Promise.all([App.donnees('prevision'), App.donnees('ajustements')]).then(function (rs) {
+        if (App.etat.ecran !== 'prevision') return;
+        if (!rs[0].ok) { App.erreur(c, rs[0]); return; }
+        if (!rs[1].ok) { App.erreur(c, rs[1]); return; }
+        etat.d = rs[0].data; etat.aj = rs[1].data; dessiner();
+      });
+    }
+
+    function brancherStat() {
+      var b = c.querySelector('#p-stat');
+      if (!b) return;
+      b.onclick = function () {
+        App.dialogue({
+          titre: 'Recalculer la statistique', ok: 'Recalculer',
+          corps: '<p>Une nouvelle version « Statistique » remplace la prévision courante. Vos corrections, événements, arrêts et substitutions restent enregistrés mais ne comptent plus tant que vous n\'avez pas enregistré une reprévision.</p><p class="note">Pondération des années : réglage PONDERATION_ANNEES. Le calcul peut durer une minute.</p>',
+          surOk: function () {
+            return App.appel('calculerStatistique', [{}, App.idOperation()]).then(function (r) {
+              if (!r.ok) return r;
+              etat.modif = {}; App.toast('Version ' + r.data.resultat.idVersion + ' créée (' + r.data.resultat.lignes + ' lignes).'); recharger();
+              return r;
+            });
+          }
+        });
+      };
+    }
+
+    function brancher() {
+      brancherStat();
+      App.$$('[data-m]', c).forEach(function (b) { b.onclick = function () { etat.mode = b.getAttribute('data-m'); dessiner(); }; });
+      c.querySelector('#p-q').oninput = function (e) { etat.q = e.target.value; majTable(); };
+      c.querySelector('#p-seul').onchange = function (e) { etat.seulement = e.target.checked; majTable(); };
+      c.querySelector('#p-csv').onclick = exporter;
+      var evt = c.querySelector('#p-evt'); if (evt) evt.onclick = function () { dialogueEvenement(); };
+      var sv = c.querySelector('#p-save'); if (sv) sv.onclick = dialogueEnregistrer;
+      brancherTable();
+      brancherDetail();
+    }
+
+    function majTable() {
+      c.querySelector('#p-table').innerHTML = tableau();
+      brancherTable();
+    }
+
+    function brancherTable() {
+      App.$$('#p-table input.cell', c).forEach(function (i) {
+        i.onclick = function (e) { e.stopPropagation(); };
+        i.onchange = function () {
+          var k = i.getAttribute('data-k'), a = etat.d.articles.filter(function (x) { return cle(x) === k; })[0];
+          var brut = i.value.trim().replace(/\s/g, '').replace(',', '.');
+          var v = brut === '' ? 0 : Number(brut);
+          if (isNaN(v)) { App.toast('Valeur non numérique : ' + i.value); i.value = valeurCellule(a); return; }
+          if (v === 0) etat.modif[k] = etat.mode === 'p' ? { pourcent: 0 } : { quantite: 0 };
+          else etat.modif[k] = etat.mode === 'p' ? { pourcent: v } : { quantite: v / ratio(a) };
+          if (appliquee(a) === 0 && v === 0) delete etat.modif[k];
+          dessiner();
+        };
+      });
+      App.$$('#p-table tbody tr[data-k]', c).forEach(function (tr) {
+        tr.onclick = function () { etat.sel = tr.getAttribute('data-k'); c.querySelector('#p-detail').innerHTML = detail(); majTable(); brancherDetail(); };
+      });
+    }
+
+    function brancherDetail() {
+      App.$$('[data-annuler]', c).forEach(function (b) {
+        b.onclick = function () {
+          App.dialogue({
+            titre: 'Annuler la saisie ' + b.getAttribute('data-annuler'), ok: 'Annuler la saisie',
+            corps: '<p>La saisie n\'aura plus d\'effet à la prochaine reprévision. Elle reste dans le journal.</p>',
+            surOk: function () {
+              return App.appel('annulerAjustement', [b.getAttribute('data-nature'), b.getAttribute('data-annuler'), App.idOperation()]).then(function (r) {
+                if (!r.ok) return r;
+                App.toast('Saisie annulée. Enregistrez la reprévision pour l\'appliquer.'); recharger(); return r;
+              });
+            }
+          });
+        };
+      });
+    }
+
+    function dialogueEnregistrer() {
+      var cles = Object.keys(etat.modif);
+      var items = cles.map(function (k) {
+        var a = etat.d.articles.filter(function (x) { return cle(x) === k; })[0], m = etat.modif[k];
+        return { entite: a.entite, code: a.code, quantite: m.quantite !== undefined ? (m.quantite ? +m.quantite.toFixed(3) : '') : '', pourcent: m.pourcent !== undefined ? (m.pourcent || '') : '' };
+      });
+      var impact = cles.reduce(function (s, k) {
+        var a = etat.d.articles.filter(function (x) { return cle(x) === k; })[0];
+        return s + (nouvelle(a) - appliquee(a)) * (App.etat.unite === 'Q' ? 1 : ratio(a));
+      }, 0);
+      App.dialogue({
+        titre: 'Enregistrer la reprévision', ok: 'Créer la version',
+        corps: '<p class="note">' + cles.length + ' article(s) modifié(s) · impact net ' + (impact >= 0 ? '+' : '−') + App.fmt(Math.abs(impact)) + '. Les événements, arrêts et substitutions actifs sont appliqués en même temps.</p>' +
+          '<label for="d-motif">Motif</label><select id="d-motif">' + MOTIFS.map(function (m) { return '<option>' + esc(m) + '</option>'; }).join('') + '</select>' +
+          '<label for="d-com">Commentaire</label><textarea id="d-com" rows="3" placeholder="Obligatoire pour la traçabilité"></textarea>',
+        surOk: function () {
+          var com = $v('#d-com');
+          if (!com) return { ok: false, message: 'Le commentaire est obligatoire.' };
+          return App.appel('reprevision', [{ corrections: items, motif: $v('#d-motif'), commentaire: com }, App.idOperation()]).then(function (r) {
+            if (!r.ok) return r;
+            var res = r.data.resultat;
+            etat.modif = {};
+            App.toast('Version ' + res.idVersion + ' enregistrée (' + res.corrigees + ' correction(s)).' + (res.avertissements && res.avertissements.length ? ' ' + res.avertissements[0] : ''));
+            recharger();
+            return r;
+          });
+        }
+      });
+    }
+
+    function dialogueEvenement() {
+      var a = etat.d.articles.filter(function (x) { return cle(x) === etat.sel; })[0];
+      var ents = App.etat.session.entites;
+      App.dialogue({
+        titre: 'Ajouter un événement commercial', ok: 'Enregistrer',
+        corps: '<label for="e-type">Type</label><select id="e-type">' + TYPES_EVT.map(function (t) { return '<option value="' + t[0] + '">' + t[1] + '</option>'; }).join('') + '</select>' +
+          '<label for="e-ent">Entité</label><select id="e-ent">' + ents.map(function (e) { return '<option' + (a && a.entite === e ? ' selected' : '') + '>' + esc(e) + '</option>'; }).join('') + '</select>' +
+          '<label for="e-code">Code produit</label><input id="e-code" value="' + esc(a ? a.code : '') + '">' +
+          '<label for="e-qte">Quantité (+ ou −, en unités de stock)</label><input id="e-qte" inputmode="decimal">' +
+          '<label for="e-pct">ou pourcentage de la statistique</label><input id="e-pct" inputmode="decimal">' +
+          '<label for="e-com">Commentaire</label><input id="e-com" maxlength="200">' +
+          '<p class="note">L\'événement compte à la prochaine reprévision.</p>',
+        surOk: function () {
+          return App.appel('ajouterAjustement', [{ nature: 'EVENEMENT', type: $v('#e-type'), entite: $v('#e-ent'), code: $v('#e-code'), quantite: $v('#e-qte'), pourcent: $v('#e-pct'), commentaire: $v('#e-com') }, App.idOperation()]).then(function (r) {
+            if (!r.ok) return r;
+            App.toast('Événement ' + r.data.resultat.id + ' enregistré.' + (r.data.resultat.avertissement ? ' ' + r.data.resultat.avertissement : ''));
+            recharger(); return r;
+          });
+        }
+      });
+    }
+
+    function exporter() {
+      var ref = etat.d.anneeReference || 'N-1';
+      var lignes = [['Code', 'Libellé', 'Entité', 'Réalisé ' + ref, 'Statistique', 'Événements', 'Corrections', 'Substitutions', 'Retenue', 'Unité']];
+      articlesVisibles().forEach(function (a) {
+        lignes.push([a.code, a.libelle, a.entite].concat(['n1', 'statistique', 'evenements', 'correction', 'substitution', 'retenue'].map(function (k) { return Math.round(App.valArt(a, k) * 100) / 100; })).concat([App.UNITES[App.etat.unite].lbl]));
+      });
+      App.telecharger('prevision-' + App.etat.session.campagne.id + '.csv', lignes);
+    }
+
+    function $v(sel) { var e = document.querySelector('#dlg ' + sel); return e ? e.value.trim() : ''; }
+
+    App.etat.redessiner = dessiner;
+    recharger();
+  };
+})();
+</script>

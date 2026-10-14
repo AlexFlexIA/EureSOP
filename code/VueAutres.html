@@ -1,0 +1,124 @@
+<script>
+(function () {
+  'use strict';
+  var App = window.App, esc = App.esc;
+
+  // ---------- Écrans à venir ----------
+  function aVenir(titre, sous, besoin) {
+    return function (c) {
+      c.innerHTML = '<h1>' + esc(titre) + '</h1><p class="sub">' + esc(sous) + '</p><div class="card"><h2>Pas encore disponible</h2><p>' + esc(besoin) + '</p></div>';
+    };
+  }
+  App.vues.cadencage = aVenir('Cadençage', 'Répartition du besoin sur les semaines, puis sur les mois.', 'Cet écran sera relié à l\'onglet COEFFICIENTS des paramètres.');
+  App.vues.stocks = aVenir('Projection des stocks', 'Hebdomadaire, par plateforme.', 'Cet écran demande les sources de stocks et de commandes fournisseurs.');
+
+  // ---------- Versions & fiabilité ----------
+  App.vues.versions = function (c) {
+    var etat = { v: null, fiab: undefined };
+    var droits = App.etat.session.droits;
+    var ouverte = ['GELEE', 'CLOTUREE'].indexOf(App.etat.session.campagne.statut) < 0;
+
+    function liste() {
+      var l = etat.v.slice().reverse();
+      if (!l.length) return '<div class="vide">Aucune version pour cette campagne. Calculez la prévision statistique dans l\'écran Prévision &amp; arbitrage.</div>';
+      return '<ul class="vt">' + l.map(function (v, i) {
+        var statut = v.statut === 'COURANTE' ? App.pill('ok', 'Courante', '✓') : App.pill('info', 'Archivée', '●');
+        var verrou = v.verrouillee ? ' ' + App.pill('brand', 'Verrouillée', '■') : '';
+        var action = !v.verrouillee && v.statut === 'COURANTE' && droits.validation && ouverte ? ' <button class="btn petit" type="button" data-verrou="' + esc(v.id) + '">Verrouiller</button>' : '';
+        return '<li class="' + (i === 0 ? 'last' : '') + '"><b>' + esc(v.id) + ' · ' + esc(App.typeVersion(v.type)) + '</b> ' + statut + verrou + action + '<br><span class="note">' + esc(v.libelle) + '<br>' + esc(v.creeLe.replace('T', ' ')) + ' · ' + esc(v.creePar) + (v.commentaire ? '<br>' + esc(v.commentaire) : '') + '</span></li>';
+      }).join('') + '</ul>';
+    }
+
+    function fiabilite() {
+      var f = etat.fiab;
+      var bouton = '<div class="row"><button class="btn" id="v-essai" type="button">Tester les pondérations sur l\'historique</button><span id="v-essai-msg" class="note" role="status"></span></div>';
+      var intro = '<p>L\'application refait la prévision de la dernière année avec les années d\'avant seulement, puis la compare au réalisé, pour plusieurs pondérations.</p>';
+      if (!f) return intro + bouton;
+      var lignes = f.resultats.map(function (x, i) {
+        var b = Math.round(x.biais * 100);
+        return '<tr><td>' + esc(x.ponderation.join(' / ')) + (x.actuelle ? ' ' + App.pill('info', 'Réglage actuel', '●') : '') + (i === f.meilleur ? ' ' + App.pill('ok', 'La plus juste', '✓') : '') + '</td><td class="n">' + Math.round(x.erreur * 100) + ' %</td><td class="n">' + (b > 0 ? '+' : '') + b + ' %</td></tr>';
+      }).join('');
+      return intro + bouton + '<p class="note" style="margin-top:10px">Test sur ' + esc(f.anneeTestee) + ' avec ' + esc(f.anneesBase.join(', ')) + ' (' + App.n0(f.nbArticles) + ' articles).</p><div class="scroll"><table><thead><tr><th>Pondération (année récente d\'abord)</th><th class="n">Erreur</th><th class="n">Biais</th></tr></thead><tbody>' + lignes + '</tbody></table></div>' +
+        '<p class="note"><b>Erreur :</b> écart entre prévu et réel, article par article, rapporté aux ventes. <b>Biais :</b> écart sur le total (positif = sur-prévision). Pour changer la pondération : réglage PONDERATION_ANNEES, puis recalcul.</p>';
+    }
+
+    function dessiner() {
+      if (!etat.v) return;
+      c.innerHTML = '<h1>Versions &amp; fiabilité</h1><p class="sub">Retracer chaque reprévision et mesurer la fiabilité de la méthode.</p>' +
+        '<div class="grid g2"><div class="card"><h2>Historique des versions <small>' + esc(App.etat.session.campagne.libelle || App.etat.session.campagne.id) + '</small></h2>' + liste() + '</div>' +
+        '<div class="card"><h2>Fiabilité de la méthode</h2>' + fiabilite() + '</div></div>';
+      App.$$('[data-verrou]', c).forEach(function (b) {
+        b.onclick = function () {
+          App.dialogue({
+            titre: 'Verrouiller la version ' + b.getAttribute('data-verrou'), ok: 'Verrouiller',
+            corps: '<p>Une version verrouillée ne peut plus être remplacée ni recalculée. Cette action est définitive.</p>',
+            surOk: function () {
+              return App.appel('verrouillerVersion', [b.getAttribute('data-verrou'), App.idOperation()]).then(function (r) {
+                if (!r.ok) return r; App.toast('Version verrouillée.'); recharger(); return r;
+              });
+            }
+          });
+        };
+      });
+      var e = c.querySelector('#v-essai');
+      if (e) e.onclick = function () {
+        e.disabled = true; c.querySelector('#v-essai-msg').textContent = 'Test en cours…';
+        App.donnees('essaiPonderation').then(function (r) {
+          if (!r.ok) { e.disabled = false; c.querySelector('#v-essai-msg').textContent = r.message; return; }
+          etat.fiab = r.data; dessiner();
+        });
+      };
+    }
+
+    function recharger() {
+      App.invalider();
+      return App.donnees('versions').then(function (r) {
+        if (App.etat.ecran !== 'versions') return;
+        if (!r.ok) { App.erreur(c, r); return; }
+        etat.v = r.data; dessiner();
+      });
+    }
+    App.etat.redessiner = dessiner;
+    recharger();
+  };
+
+  // ---------- Sources de données ----------
+  var ETATS = {
+    OK: ['ok', 'Connectée', '✓'], ERREUR: ['bad', 'Erreur', '✖'], A_CONNECTER: ['warn', 'À connecter', '⚠'],
+    INACTIF: ['info', 'Inactive', '●'], AUTRE_CAMPAGNE: ['info', 'Autre campagne', '●']
+  };
+  App.vues.sources = function (c) {
+    App.donnees('sources').then(function (r) {
+      if (App.etat.ecran !== 'sources') return;
+      if (!r.ok) { App.erreur(c, r); return; }
+      var d = r.data;
+      var lignes = d.sources.map(function (s) {
+        var e = ETATS[s.etat] || ETATS.ERREUR;
+        var contenu = [s.entite, s.pac].filter(Boolean).join(' · ');
+        return '<tr><td><b>' + esc(s.libelle) + '</b><br><span class="note">' + esc(s.id) + '</span></td><td>' + esc(contenu) + '</td><td>' + esc(s.alimentation || 'Lecture en direct') + '</td><td class="n">' + (s.lignes !== undefined ? App.n0(s.lignes) : '–') + '</td><td>' + App.pill(e[0], e[1], e[2]) + '<br><span class="note">' + esc(s.detail) + '</span></td><td>' + (s.lien ? '<a href="' + esc(s.lien) + '" target="_blank" rel="noopener">Ouvrir</a>' : '') + '</td></tr>';
+      }).join('');
+      c.innerHTML = '<h1>Sources de données</h1><p class="sub">L\'application lit et écrit dans des Google Sheets, alimentés de façons diverses.</p>' +
+        '<div class="card"><div class="scroll"><table><thead><tr><th>Source</th><th>Contenu</th><th>Alimentation</th><th class="n">Lignes</th><th>État</th><th></th></tr></thead><tbody>' + (lignes || '<tr><td colspan="6" class="note">Aucune source déclarée dans SOURCES.</td></tr>') + '</tbody></table></div>' +
+        '<p class="note" style="margin-top:10px">Principe : les fichiers « entrées » (ventes, stocks, budget) sont en lecture seule dans l\'application ; les fichiers « sorties » (versions, prévision, corrections, journal) sont écrits par l\'application. Une source se déclare dans l\'onglet SOURCES des paramètres.</p></div>' +
+        (d.fichiers.length ? '<div class="card"><h2>Fichiers de l\'application</h2><ul class="liste">' + d.fichiers.map(function (f) { return '<li><b>' + esc(f.nom) + '</b> <a href="' + esc(f.lien) + '" target="_blank" rel="noopener">Ouvrir</a></li>'; }).join('') + '</ul></div>' : '');
+    });
+  };
+
+  // ---------- Contrôles de mise en service ----------
+  App.vues.controles = function (c) {
+    c.innerHTML = '<h1>Contrôles de mise en service</h1><p class="sub">Vérifie les classeurs, la campagne, les accès et les sources avant l\'ouverture.</p>' +
+      '<div class="card"><div class="row"><button class="btn pri" id="c-lancer" type="button">Lancer les contrôles</button><span id="c-etat" class="note" role="status"></span></div><div id="c-res" style="margin-top:12px"></div></div>';
+    c.querySelector('#c-lancer').onclick = function () {
+      var b = c.querySelector('#c-lancer'); b.disabled = true; c.querySelector('#c-etat').textContent = 'Contrôle en cours…';
+      App.appel('controles', []).then(function (r) {
+        b.disabled = false; c.querySelector('#c-etat').textContent = '';
+        if (!r.ok) { c.querySelector('#c-res').innerHTML = '<p>' + esc(r.message) + '</p>'; return; }
+        c.querySelector('#c-res').innerHTML = '<div class="scroll"><table><thead><tr><th>Résultat</th><th>Sujet</th><th>Détail</th></tr></thead><tbody>' + r.data.map(function (x) {
+          var n = App.NIVEAUX[x.niveau] || App.NIVEAUX.ATTENTION;
+          return '<tr><td>' + App.pill(n[0], x.niveau, n[1]) + '</td><td>' + esc(x.sujet) + '</td><td>' + esc(x.detail) + '</td></tr>';
+        }).join('') + '</tbody></table></div>';
+      });
+    };
+  };
+})();
+</script>

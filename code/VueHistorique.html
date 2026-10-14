@@ -1,0 +1,116 @@
+<script>
+(function () {
+  'use strict';
+  var App = window.App, esc = App.esc;
+  var MOTIFS_SUB = [['REMPLACEMENT', 'Remplacement'], ['REGLEMENTAIRE', 'Réglementaire'], ['AUTRE', 'Autre']];
+
+  App.vues.historique = function (c) {
+    var etat = { h: null, aj: null, q: '' };
+    var droits = App.etat.session.droits;
+    var ouverte = ['GELEE', 'CLOTUREE'].indexOf(App.etat.session.campagne.statut) < 0;
+    var peutSaisir = ouverte && (droits.validationGamme || droits.arbitrage);
+
+    // Quantité, hectares ou montant d'un article pour une année, selon l'unité choisie.
+    function valeur(p) {
+      if (!p) return null;
+      return App.etat.unite === 'Q' ? p.qte : (App.etat.unite === 'H' ? p.ha : p.mt);
+    }
+
+    function tableHisto() {
+      var h = etat.h, an = h.annees;
+      var q = etat.q.toLowerCase(), ent = App.etat.entite;
+      var sel = h.articles.filter(function (a) {
+        return (!ent || a.entite === ent) && (!q || a.code.toLowerCase().indexOf(q) >= 0 || a.libelle.toLowerCase().indexOf(q) >= 0);
+      });
+      var derniere = an[an.length - 1], avant = an.length > 1 ? an[an.length - 2] : null;
+      var cles = { Q: 'qte', H: 'ha', E: 'mt' }[App.etat.unite];
+      var corps = sel.slice(0, 200).map(function (a) {
+        var l = valeur(a.parAnnee[derniere]) || 0, b = avant ? (valeur(a.parAnnee[avant]) || 0) : 0;
+        return '<tr><td>' + esc(a.code) + '</td><td>' + esc(a.libelle) + '</td><td>' + esc(a.entite) + '</td>' + an.map(function (y) {
+          var v = valeur(a.parAnnee[y]); return '<td class="n">' + (v === null ? '–' : App.fmt(v)) + '</td>';
+        }).join('') + (avant ? '<td>' + App.variation(l, b) + '</td>' : '') + '</tr>';
+      }).join('');
+      return (sel.length ? '<table><thead><tr><th>Code</th><th>Libellé</th><th>Entité</th>' + an.map(function (y) { return '<th class="n">' + esc(App.UNITES[App.etat.unite].lbl) + ' ' + esc(y) + '</th>'; }).join('') + (avant ? '<th>' + esc(derniere) + ' vs ' + esc(avant) + '</th>' : '') + '</tr></thead><tbody>' + corps + '</tbody></table>' : '<div class="vide">Aucun article ne correspond.</div>') +
+        '<p class="note">' + sel.length + ' article(s)' + (sel.length > 200 ? ', 200 affichés : affinez la recherche' : '') + (h.tronque ? ' · ' + h.nbArticles + ' articles au total, les ' + h.articles.length + ' premiers par montant ' + esc(derniere) + ' sont chargés' : '') + ' · colonne ' + cles + '.</p>';
+    }
+
+    function totaux() {
+      var h = etat.h, ent = App.etat.entite;
+      var lignes = h.totaux.filter(function (t) { return !ent || t.entite === ent; });
+      return '<table><thead><tr><th>Entité</th><th>Année</th><th class="n">Articles</th><th class="n">TC</th><th class="n">Quantité</th><th class="n">Hectares</th><th class="n">Montant HT</th></tr></thead><tbody>' +
+        lignes.map(function (t) { return '<tr><td>' + esc(t.entite) + '</td><td>' + esc(t.annee) + '</td><td class="n">' + App.n0(t.articles) + '</td><td class="n">' + App.n0(t.tc) + '</td><td class="n">' + App.n0(t.qte) + '</td><td class="n">' + App.n0(t.ha) + '</td><td class="n">' + App.n0(t.montant) + ' €</td></tr>'; }).join('') + '</tbody></table>' +
+        '<p class="note">La quantité additionne des unités de stock différentes (sacs, bidons, kg).</p>';
+    }
+
+    function tableSubstitutions() {
+      var l = etat.aj.substitutions;
+      if (!l.length) return '<div class="vide">Aucun arrêt ni substitution actif.</div>';
+      return '<table><thead><tr><th>Numéro</th><th>Nature</th><th>Article remplacé</th><th></th><th>Remplaçant</th><th>Entité</th><th class="n">Taux</th><th>Période</th><th>Commentaire</th><th></th></tr></thead><tbody>' + l.map(function (x) {
+        return '<tr><td>' + esc(x.id) + '</td><td>' + (x.nature === 'ARRET' ? App.pill('warn', 'Arrêt', '■') : App.pill('info', 'Substitution', '→')) + '</td><td>' + esc(x.ancien) + '</td><td aria-hidden="true">' + (x.nouveau ? '→' : '') + '</td><td><b>' + esc(x.nouveau || '–') + '</b></td><td>' + esc(x.entite || 'Toutes') + '</td><td class="n">' + esc(x.taux) + ' %</td><td>' + esc((x.effet || '') + (x.fin ? ' → ' + x.fin : '')) + '</td><td>' + esc(x.commentaire) + '</td><td>' +
+          (peutSaisir ? '<button class="btn petit" type="button" data-annuler="' + esc(x.id) + '">Annuler</button>' : '') + '</td></tr>';
+      }).join('') + '</tbody></table>';
+    }
+
+    function dessiner() {
+      if (!etat.h || !etat.aj) return;
+      var ref = etat.h.annees.join(', ');
+      c.innerHTML = '<h1>Historique &amp; substitutions</h1><p class="sub">Fiabiliser l\'historique avant de prévoir : arrêts de produit et remplacements d\'articles. Années lues : ' + esc(ref) + '.</p>' +
+        '<div class="card"><h2>Ventes réalisées <small>par entité et par année</small></h2><div class="scroll" style="max-height:260px">' + totaux() + '</div></div>' +
+        '<div class="card"><h2>Table de substitution <small>arrêts de produit et remplacements, valables pour toutes les campagnes</small></h2><div class="scroll" style="max-height:300px" id="h-subs">' + tableSubstitutions() + '</div>' +
+        (peutSaisir ? '<div class="row" style="margin-top:10px"><button class="btn pri" id="h-arret" type="button">+ Arrêt de produit</button><button class="btn pri" id="h-sub" type="button">+ Substitution</button><span class="note">Effet à la prochaine reprévision. Pas de chaînage : un report ne se répercute pas sur un autre report.</span></div>' : '<p class="note">Votre rôle ne permet pas de saisir d\'arrêt ni de substitution.</p>') + '</div>' +
+        '<div class="card"><h2>Historique par article</h2><div class="row" style="margin-bottom:10px"><label class="ctl" style="margin:0">Rechercher<input id="h-q" type="search" maxlength="60" value="' + esc(etat.q) + '" placeholder="code ou libellé"></label></div><div class="scroll" id="h-table">' + tableHisto() + '</div></div>';
+      c.querySelector('#h-q').oninput = function (e) { etat.q = e.target.value; c.querySelector('#h-table').innerHTML = tableHisto(); };
+      var a = c.querySelector('#h-arret'); if (a) a.onclick = function () { dialogue('ARRET'); };
+      var s = c.querySelector('#h-sub'); if (s) s.onclick = function () { dialogue('SUBSTITUTION'); };
+      App.$$('[data-annuler]', c).forEach(function (b) {
+        b.onclick = function () {
+          App.dialogue({
+            titre: 'Annuler ' + b.getAttribute('data-annuler'), ok: 'Annuler la saisie',
+            corps: '<p>L\'arrêt ou la substitution est désactivé (Actif = NON dans l\'onglet SUBSTITUTIONS). Il n\'aura plus d\'effet à la prochaine reprévision.</p>',
+            surOk: function () {
+              return App.appel('annulerAjustement', ['SUBSTITUTION', b.getAttribute('data-annuler'), App.idOperation()]).then(function (r) {
+                if (!r.ok) return r; App.toast('Saisie annulée.'); recharger(); return r;
+              });
+            }
+          });
+        };
+      });
+    }
+
+    function dialogue(nature) {
+      var ents = App.etat.session.entites;
+      var champ = function (id, lib, extra) { return '<label for="s-' + id + '">' + lib + '</label><input id="s-' + id + '" ' + (extra || '') + '>'; };
+      var corps = champ('ancien', nature === 'ARRET' ? 'Code du produit arrêté' : 'Code de l\'ancien produit') +
+        (nature === 'SUBSTITUTION' ? champ('nouveau', 'Code du nouveau produit') : '') +
+        '<label for="s-ent">Entité</label><select id="s-ent"><option value="">Toutes</option>' + ents.map(function (e) { return '<option>' + esc(e) + '</option>'; }).join('') + '</select>' +
+        champ('taux', nature === 'ARRET' ? 'Part retirée, % (100 par défaut)' : 'Part reportée, % (100 par défaut)', 'inputmode="decimal"') +
+        (nature === 'SUBSTITUTION' ? '<label for="s-motif">Motif</label><select id="s-motif">' + MOTIFS_SUB.map(function (m) { return '<option value="' + m[0] + '">' + m[1] + '</option>'; }).join('') + '</select>' : '') +
+        champ('de', 'Date d\'effet (facultatif)', 'type="date"') + champ('df', 'Date de fin (facultatif)', 'type="date"') + champ('com', 'Commentaire', 'maxlength="200"');
+      App.dialogue({
+        titre: nature === 'ARRET' ? 'Arrêt de produit' : 'Substitution', ok: 'Enregistrer', corps: corps,
+        surOk: function () {
+          var g = function (id) { var e = document.querySelector('#dlg #s-' + id); return e ? e.value.trim() : ''; };
+          return App.appel('ajouterAjustement', [{ nature: nature, ancien: g('ancien'), nouveau: g('nouveau'), entite: g('ent'), taux: g('taux'), motif: g('motif'), dateEffet: g('de'), dateFin: g('df'), commentaire: g('com') }, App.idOperation()]).then(function (r) {
+            if (!r.ok) return r;
+            App.toast('Saisie ' + r.data.resultat.id + ' enregistrée.' + (r.data.resultat.avertissement ? ' ' + r.data.resultat.avertissement : ''));
+            recharger(); return r;
+          });
+        }
+      });
+    }
+
+    function recharger() {
+      App.invalider();
+      return Promise.all([App.donnees('historique'), App.donnees('ajustements')]).then(function (rs) {
+        if (App.etat.ecran !== 'historique') return;
+        if (!rs[0].ok) { App.erreur(c, rs[0]); return; }
+        if (!rs[1].ok) { App.erreur(c, rs[1]); return; }
+        etat.h = rs[0].data; etat.aj = rs[1].data; dessiner();
+      });
+    }
+
+    App.etat.redessiner = dessiner;
+    recharger();
+  };
+})();
+</script>

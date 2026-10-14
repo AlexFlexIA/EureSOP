@@ -1,0 +1,215 @@
+<script>
+(function () {
+  'use strict';
+  var App = window.App = { vues: {}, cache: {}, etat: { session: null, ecran: 'dashboard', campagne: '', entite: '', unite: 'Q', redessiner: null } };
+  var $ = App.$ = function (s, r) { return (r || document).querySelector(s); };
+  App.$$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); };
+
+  var esc = App.esc = function (v) {
+    return String(v === null || v === undefined ? '' : v).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  };
+
+  // ---------- Formats et unités ----------
+  var nf = new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 });
+  App.n0 = function (v) { return nf.format(Math.round(v || 0)); };
+  App.pct = function (v) { return (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(1).replace('.', ',') + ' %'; };
+  // Unité d'affichage : Q quantité (unités de stock), H hectares, E valeur HT.
+  App.UNITES = { Q: { cle: 'q', lbl: 'Quantité', suf: '' }, H: { cle: 'ha', lbl: 'Hectares', suf: ' ha' }, E: { cle: 'eur', lbl: 'Valeur €', suf: ' €' } };
+  App.fmt = function (v) { return nf.format(Math.round(v || 0)) + App.UNITES[App.etat.unite].suf; };
+  // Valeur d'un article dans l'unité choisie. champ : n1, statistique, evenements, correction, substitution, retenue.
+  App.valArt = function (a, champ) {
+    var u = App.etat.unite;
+    if (champ === 'n1') return u === 'Q' ? a.n1 : (u === 'H' ? a.n1ha : a.n1eur);
+    return a[champ] * (u === 'Q' ? 1 : (u === 'H' ? a.rh : a.re));
+  };
+  // Totaux de l'entité filtrée (ou de toutes), dans l'unité choisie.
+  App.totaux = function (liste) {
+    var ent = App.etat.entite, cle = App.UNITES[App.etat.unite].cle;
+    var t = { articles: 0, n1: 0, statistique: 0, evenements: 0, correction: 0, substitution: 0, retenue: 0 };
+    (liste || []).forEach(function (x) {
+      if (ent && x.entite !== ent) return;
+      t.articles += x.articles;
+      Object.keys(t).forEach(function (k) { if (k !== 'articles') t[k] += x[cle][k]; });
+    });
+    return t;
+  };
+  App.pill = function (classe, texte, symbole) {
+    return '<span class="pill p-' + classe + '"><span aria-hidden="true">' + (symbole || '') + '</span>' + esc(texte) + '</span>';
+  };
+  App.variation = function (a, b) {
+    if (!b) return a ? App.pill('info', 'Nouveau', '●') : '';
+    var p = (a - b) / Math.abs(b) * 100;
+    var seuil = (App.etat.session && App.etat.session.seuilEcart) || 15;
+    return App.pill(Math.abs(p) > seuil ? 'warn' : 'info', App.pct(p), p >= 0 ? '▲' : '▼');
+  };
+  App.TYPES_VERSION = { PREV_TC: 'Prévision TC', STATISTIQUE: 'Statistique', ARBITREE: 'Arbitrée', VALIDEE: 'Validée' };
+  App.typeVersion = function (t) { return App.TYPES_VERSION[t] || t; };
+  App.NIVEAUX = { ERREUR: ['bad', '✖'], ATTENTION: ['warn', '⚠'], INFO: ['info', 'ℹ'], OK: ['ok', '✓'] };
+
+  App.idOperation = function () {
+    if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+    return 'op-' + Date.now() + '-' + Math.random().toString(16).slice(2);
+  };
+
+  App.toast = function (texte) {
+    var t = $('#toast');
+    t.textContent = texte; t.hidden = false;
+    clearTimeout(App.toast.t); App.toast.t = setTimeout(function () { t.hidden = true; }, 4000);
+  };
+
+  // ---------- Appels serveur ----------
+  // Renvoie { ok, data } ou { ok: false, code, message }. La campagne choisie accompagne chaque appel.
+  App.appel = function (nom, args) {
+    return new Promise(function (resolve) {
+      google.script.run
+        .withSuccessHandler(resolve)
+        .withFailureHandler(function () { resolve({ ok: false, code: 'RESEAU', message: 'Le serveur ne répond pas. Vérifiez votre connexion et réessayez.' }); })
+        .api(nom, args || [], App.etat.campagne || '');
+    });
+  };
+  // Lecture avec mémoire : une même donnée n'est demandée qu'une fois jusqu'à la prochaine écriture.
+  App.donnees = function (nom, args) {
+    var k = nom + '|' + JSON.stringify(args || []);
+    if (!App.cache[k]) {
+      App.cache[k] = App.appel(nom, args).then(function (r) { if (!r.ok) delete App.cache[k]; return r; });
+    }
+    return App.cache[k];
+  };
+  App.invalider = function () { App.cache = {}; };
+
+  App.erreur = function (cible, r) {
+    cible.innerHTML = '<div class="card"><h2>Données indisponibles</h2><p>' + esc(r.message) + '</p><p class="note">Code : ' + esc(r.code) + '</p></div>';
+  };
+
+  // ---------- Boîte de dialogue ----------
+  // options : { titre, corps (html), ok (libellé), surOk: function () -> Promise<{ok,message}> | undefined }
+  App.dialogue = function (o) {
+    var d = $('#dlg');
+    d.innerHTML = '<h2 style="margin:0 0 4px;color:#000">' + esc(o.titre) + '</h2><div class="champs">' + o.corps + '</div><p class="note" id="dlg-msg" role="status" style="color:#9B1C13"></p>' +
+      '<div class="row" style="margin-top:14px;justify-content:flex-end"><button class="btn" type="button" id="dlg-non">Annuler</button><button class="btn pri" type="button" id="dlg-ok">' + esc(o.ok || 'Valider') + '</button></div>';
+    $('#dlg-non').onclick = function () { d.close(); };
+    $('#dlg-ok').onclick = function () {
+      var b = $('#dlg-ok'); b.disabled = true; $('#dlg-msg').textContent = '';
+      Promise.resolve(o.surOk ? o.surOk() : { ok: true }).then(function (r) {
+        b.disabled = false;
+        if (r && r.ok === false) { $('#dlg-msg').textContent = r.message || 'Action impossible.'; return; }
+        d.close();
+      });
+    };
+    d.showModal();
+    var premier = d.querySelector('input,select,textarea'); if (premier) premier.focus();
+  };
+
+  // ---------- Export ----------
+  // Fichier CSV lisible par Excel (séparateur point-virgule, accents conservés). lignes : tableau de tableaux.
+  App.telecharger = function (nom, lignes) {
+    var cel = function (v) { var t = String(v === null || v === undefined ? '' : v); return /[";\n]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t; };
+    var csv = '﻿' + lignes.map(function (l) { return l.map(cel).join(';'); }).join('\r\n');
+    var blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = nom;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
+  };
+
+  // ---------- Graphique en barres groupées ----------
+  // series : [{ nom, couleur, valeurs: [] }], categories : []. Valeurs déjà dans l'unité d'affichage.
+  App.barres = function (categories, series, hauteur) {
+    var h = hauteur || 240, w = 620, pl = 56, pb = 26, pt = 10;
+    var max = Math.max.apply(null, [1].concat.apply([], series.map(function (s) { return s.valeurs; }))) * 1.1;
+    var bw = (w - pl) / Math.max(1, categories.length);
+    var y = function (v) { return pt + (h - pt - pb) * (1 - v / max); };
+    var s = '<svg viewBox="0 0 ' + w + ' ' + h + '" width="100%" role="img" aria-label="Graphique en barres">';
+    for (var i = 0; i <= 4; i++) {
+      var v = max * i / 4;
+      s += '<line x1="' + pl + '" x2="' + w + '" y1="' + y(v) + '" y2="' + y(v) + '" stroke="#e3e3e3"/><text x="' + (pl - 6) + '" y="' + (y(v) + 4) + '" font-size="10" text-anchor="end" fill="#444">' + nf.format(Math.round(v)) + '</text>';
+    }
+    var largeur = bw * 0.76 / series.length;
+    categories.forEach(function (c, k) {
+      var x = pl + k * bw;
+      series.forEach(function (se, j) {
+        var val = se.valeurs[k] || 0;
+        s += '<rect x="' + (x + bw * 0.12 + j * largeur) + '" y="' + y(val) + '" width="' + (largeur - 2) + '" height="' + Math.max(0, h - pb - y(val)) + '" fill="' + se.couleur + '"><title>' + esc(se.nom + ' : ' + nf.format(Math.round(val))) + '</title></rect>';
+      });
+      s += '<text x="' + (x + bw / 2) + '" y="' + (h - 8) + '" font-size="10" text-anchor="middle" fill="#444">' + esc(c) + '</text>';
+    });
+    return s + '</svg>';
+  };
+  App.legende = function (series) {
+    return '<div class="legend">' + series.map(function (s) { return '<span><i style="background:' + s.couleur + '"></i>' + esc(s.nom) + '</span>'; }).join('') + '</div>';
+  };
+
+  // ---------- Navigation ----------
+  var MENU = [
+    ['dashboard', '▦', 'Tableau de bord'], ['prevision', '✎', 'Prévision & arbitrage'], ['historique', '⟲', 'Historique & substitutions'],
+    ['cadencage', '▤', 'Cadençage'], ['stocks', '▣', 'Projection des stocks'], ['versions', '✓', 'Versions & fiabilité'], '---',
+    ['sources', '⛁', 'Sources de données'], ['controles', '⚙', 'Contrôles de mise en service']
+  ];
+
+  App.afficher = function (nom) {
+    var s = App.etat.session;
+    if (nom === 'controles' && !s.droits.configuration) nom = 'dashboard';
+    App.etat.ecran = nom; App.etat.redessiner = null;
+    $('#menu').innerHTML = MENU.filter(function (m) { return m === '---' || m[0] !== 'controles' || s.droits.configuration; }).map(function (m) {
+      return m === '---' ? '<hr>' : '<button type="button" data-v="' + m[0] + '"' + (m[0] === nom ? ' aria-current="page"' : '') + '><span class="ico" aria-hidden="true">' + m[1] + '</span>' + esc(m[2]) + '</button>';
+    }).join('');
+    App.$$('#menu button').forEach(function (b) { b.onclick = function () { App.afficher(b.getAttribute('data-v')); }; });
+    var c = $('#contenu');
+    c.innerHTML = '<div class="card">Chargement…</div>';
+    try { window.scrollTo(0, 0); } catch (e) { /* sans effet dans un cadre */ }
+    (App.vues[nom] || App.vues.dashboard)(c);
+  };
+
+  // Les filtres de l'en-tête redessinent l'écran courant sans nouvel appel serveur.
+  App.surFiltre = function () { if (App.etat.redessiner) App.etat.redessiner(); };
+
+  function remplirEntete() {
+    var s = App.etat.session;
+    $('#camp').innerHTML = s.campagnes.map(function (c) { return '<option value="' + esc(c.id) + '"' + (c.id === s.campagne.id ? ' selected' : '') + '>' + esc(c.libelle) + '</option>'; }).join('');
+    $('#ent').innerHTML = '<option value="">' + (s.entites.length > 1 ? s.entites.join(' + ') : 'Toutes') + '</option>' +
+      (s.entites.length > 1 ? s.entites.map(function (e) { return '<option value="' + esc(e) + '">' + esc(e) + '</option>'; }).join('') : '');
+    $('#ent').value = App.etat.entite;
+    var st = s.campagne.statut;
+    $('#entete-statut').className = 'pill ' + (st === 'OUVERTE' ? 'p-ok' : 'p-warn');
+    $('#entete-statut').textContent = (st === 'OUVERTE' ? '✓ ' : '⚠ ') + st;
+    $('#entete-utilisateur').textContent = s.utilisateur;
+    $('#entete-roles').textContent = s.roles.join(', ');
+    $('#camp').onchange = function () {
+      App.etat.campagne = $('#camp').value;
+      try { localStorage.setItem('sop-campagne', App.etat.campagne); } catch (e) { /* stockage indisponible */ }
+      App.invalider(); App.demarrer();
+    };
+    $('#ent').onchange = function () { App.etat.entite = $('#ent').value; App.surFiltre(); };
+    App.$$('#unites button[data-u]').forEach(function (b) {
+      b.setAttribute('aria-pressed', b.getAttribute('data-u') === App.etat.unite ? 'true' : 'false');
+      b.onclick = function () {
+        App.etat.unite = b.getAttribute('data-u');
+        App.$$('#unites button[data-u]').forEach(function (x) { x.setAttribute('aria-pressed', x === b ? 'true' : 'false'); });
+        App.surFiltre();
+      };
+    });
+  }
+
+  App.demarrer = function () {
+    $('#chargement').hidden = false; $('#erreur').hidden = true; $('#app').hidden = true;
+    if (!App.etat.campagne) { try { App.etat.campagne = localStorage.getItem('sop-campagne') || ''; } catch (e) { App.etat.campagne = ''; } }
+    App.appel('demarrage', []).then(function (r) {
+      $('#chargement').hidden = true;
+      if (!r.ok) {
+        if (App.etat.campagne) { App.etat.campagne = ''; try { localStorage.removeItem('sop-campagne'); } catch (e) { /* ignoré */ } }
+        $('#erreur').hidden = false; $('#erreur-message').textContent = r.message; $('#erreur-code').textContent = r.code;
+        return;
+      }
+      App.etat.session = r.data;
+      App.etat.campagne = r.data.campagne.id;
+      if (App.etat.entite && r.data.entites.indexOf(App.etat.entite) < 0) App.etat.entite = '';
+      $('#app').hidden = false;
+      remplirEntete();
+      App.afficher(App.etat.ecran || 'dashboard');
+    });
+  };
+  $('#erreur-retour').onclick = function () { App.demarrer(); };
+})();
+</script>

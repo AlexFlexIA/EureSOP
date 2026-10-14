@@ -2,6 +2,7 @@
 'use strict';
 const assert = require('assert');
 const { creerEnv, creerEnvStandard } = require('./harness');
+const { ENT_HISTO, FICHIER_EUR, FICHIER_ONA, envHisto, envPrev } = require('./jeux');
 
 const tests = [];
 const test = (nom, fn) => tests.push({ nom, fn });
@@ -355,32 +356,6 @@ test('apiCreerVersion : une erreur technique devient ERREUR_INTERNE', () => {
 });
 
 // ---------- Historique PAC ----------
-const ENT_HISTO = ['Concat', 'Code produit long Triskalia', 'Libellé produit de la coop origine', 'Code technicien Appro/DTD', 'Nom du technicien Appro/DTD', 'Total qtés vtes', 'Total Ha vtes', 'Total mt ht vtes'];
-const FICHIER_EUR = 'FICHIER_HISTO_EUREDEN_0001';
-const FICHIER_ONA = 'FICHIER_HISTO_ONA_00000001';
-
-function envHisto(extraSource) {
-  const env = creerEnvStandard();
-  env.ajouterClasseur(FICHIER_EUR, {
-    'Données 2024': [ENT_HISTO,
-      ['1109939102441', 1109939, 'D.A.P. 35K', 102441, 'LE NAOUR ROBERT', 14420, 144, 12000],
-      ['1109939199405', 1109939, 'D.A.P. 35K', 199405, 'TC OK', '1 000,5', 10, '2 000,25'],
-      ['x', '', 'sans code', 102441, 'LE NAOUR ROBERT', 5, 1, 1]],
-    'Données 2025': [ENT_HISTO,
-      ['1109939102441', 1109939, 'D.A.P. 35K', 102441, 'LE NAOUR ROBERT', 16000, 160, 14000],
-      ['1109939199405', 1109939, 'D.A.P. 35K', 199405, 'TC OK', 900, 9, 1800]]
-  });
-  env.ajouterClasseur(FICHIER_ONA, {
-    'Données 2025': [ENT_HISTO, ['2200001159304', 2200001, 'AUTRE ARTICLE', 159304, 'TC ONA', 50, 5, 500]]
-  });
-  const base = { Nature: 'HISTO_PAC', Onglet: 'Données {ANNEE}', 'Actif import': 'OUI', PAC: 'PAC1', Format: 'SHEETS' };
-  env.semer('PARAM_FICHIER_TEST_00001', 'SOURCES', [
-    Object.assign({ 'ID source': 'HISTO_EUREDEN', 'ID fichier': FICHIER_EUR, Entite: 'Coop EUREDEN', Annees: '2024,2025' }, base),
-    Object.assign({ 'ID source': 'HISTO_ONA', 'ID fichier': FICHIER_ONA, Entite: 'NEGOCE ONA', Annees: '2025' }, base)
-  ].concat(extraSource || []));
-  return env;
-}
-
 test('historique : totaux par entité et année, accents et nombres en texte', () => {
   const env = envHisto(); env.moi('guillaume@eureden.com');
   const r = env.run('apiHistorique()');
@@ -478,11 +453,6 @@ test('historique : contrôles signalent un onglet qui ne s\'ouvre pas', () => {
 });
 
 // ---------- Prévision statistique ----------
-function envPrev() {
-  const env = envHisto();
-  env.semer('PARAM_FICHIER_TEST_00001', 'REGLAGES', [{ Cle: 'PONDERATION_ANNEES', Valeur: '50/30/20' }]);
-  return env;
-}
 const statistique = (env, parAnnee, annees, poids) => env.run('Previsions.statistique(' + JSON.stringify(parAnnee) + ',' + JSON.stringify(annees) + ',' + JSON.stringify(poids) + ')');
 
 test('statistique : moyenne pondérée sur trois années', () => {
@@ -843,6 +813,159 @@ test('prévision courante : colonnes détaillées et quantité retenue', () => {
   assert.strictEqual(r.version.type, 'ARBITREE');
   const eur = r.totaux.filter((t) => t.entite === 'Coop EUREDEN')[0];
   assert.strictEqual(eur.retenue, STAT_DAP - 1000);
+});
+
+// ---------- Campagnes, reprévision, tableau de bord, sources ----------
+const appel = (env, nom, args, camp) => env.run('api(' + JSON.stringify(nom) + ',' + JSON.stringify(args || []) + ',' + JSON.stringify(camp || '') + ')');
+
+test('api : appel inconnu refusé, appel sans tableau d\'arguments toléré', () => {
+  const env = creerEnvStandard(); env.moi('guillaume@eureden.com');
+  assert.strictEqual(appel(env, 'nimporte').code, 'API_INCONNUE');
+  assert.strictEqual(appel(env, 'constructor').code, 'API_INCONNUE');
+  assert.strictEqual(env.run("api('demarrage', null, '')").ok, true);
+});
+test('campagnes : liste des campagnes accessibles et changement de campagne', () => {
+  const env = creerEnvStandard(); env.moi('guillaume@eureden.com');
+  env.semer('PARAM_FICHIER_TEST_00001', 'CAMPAGNES', [{ 'ID campagne': 'PAC1_2027', Libelle: 'PAC 1 2027', Type: 'PAC1', 'Annee prevision': 2027, Statut: 'OUVERTE', 'ID sortie': 'SORTIE1', Selectionnee: 'NON' }]);
+  env.semer('PARAM_FICHIER_TEST_00001', 'ACCES', [{ 'ID campagne': 'PAC1_2027', 'Email Google': 'guillaume@eureden.com', Role: 'PREV', Global: 'OUI', Actif: 'OUI' }]);
+  const d = appel(env, 'demarrage').data;
+  assert.strictEqual(d.campagne.id, 'SOP_2027_PAC2');
+  assert.deepStrictEqual(d.campagnes.map((c) => c.id), ['SOP_2027_PAC2', 'PAC1_2027']);
+  const e = appel(env, 'demarrage', [], 'PAC1_2027').data;
+  assert.strictEqual(e.campagne.id, 'PAC1_2027');
+  assert.strictEqual(e.campagne.anneePrevision, 2027);
+});
+test('campagnes : campagne inconnue, ou sans accès, refusées', () => {
+  const env = creerEnvStandard(); env.moi('guillaume@eureden.com');
+  env.semer('PARAM_FICHIER_TEST_00001', 'CAMPAGNES', [{ 'ID campagne': 'PAC3_2027', Libelle: 'PAC 3', Type: 'PAC3', Statut: 'OUVERTE', Selectionnee: 'NON' }]);
+  assert.strictEqual(appel(env, 'demarrage', [], 'INEXISTANTE').code, 'CAMPAGNE_INCONNUE');
+  assert.strictEqual(appel(env, 'demarrage', [], 'PAC3_2027').code, 'ACCES_REFUSE');
+  assert.deepStrictEqual(appel(env, 'demarrage').data.campagnes.map((c) => c.id), ['SOP_2027_PAC2']);
+});
+test('campagnes : sans accès à la campagne par défaut, bascule sur la première accessible', () => {
+  const env = creerEnvStandard(); env.moi('autre.prev@eureden.com');
+  env.semer('PARAM_FICHIER_TEST_00001', 'CAMPAGNES', [{ 'ID campagne': 'PAC1_2027', Libelle: 'PAC 1', Type: 'PAC1', Statut: 'OUVERTE', Selectionnee: 'NON' }]);
+  env.semer('PARAM_FICHIER_TEST_00001', 'ACCES', [{ 'ID campagne': 'PAC1_2027', 'Email Google': 'autre.prev@eureden.com', Role: 'PREV', Global: 'OUI', Actif: 'OUI' }]);
+  assert.strictEqual(appel(env, 'demarrage').data.campagne.id, 'PAC1_2027');
+});
+test('reprévision : corrections du tableau + version arbitrée en une opération', () => {
+  const env = envPrev(); env.moi('guillaume@eureden.com');
+  env.run("apiCalculerStatistique({}, 'op0')");
+  const r = appel(env, 'reprevision', [{ corrections: [{ entite: 'Coop EUREDEN', code: DAP, quantite: -1000 }, { entite: 'NEGOCE ONA', code: ONA_ART, pourcent: 10 }], motif: 'Politique commerciale', commentaire: 'Comité du 12/10' }, 'rp1']);
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(r.data.resultat.idVersion, 'V002');
+  assert.strictEqual(r.data.resultat.corrigees, 2);
+  assert.strictEqual(prevLigne(env, DAP)['Qte arbitree'], STAT_DAP - 1000);
+  assert.strictEqual(prevLigne(env, ONA_ART)['Qte arbitree'], 55);
+  const cors = env.lignes('SORTIE1', 'AJUSTEMENTS_SEMAINE');
+  assert.strictEqual(cors.length, 2);
+  assert.ok(/Politique commerciale – Comité du 12\/10/.test(cors[0].Motif));
+});
+test('reprévision : une nouvelle valeur remplace la correction précédente, une valeur vide la supprime', () => {
+  const env = envPrev(); env.moi('guillaume@eureden.com');
+  appel(env, 'reprevision', [{ corrections: [{ entite: 'Coop EUREDEN', code: DAP, quantite: -1000 }], motif: 'm' }, 'rp1']);
+  appel(env, 'reprevision', [{ corrections: [{ entite: 'Coop EUREDEN', code: DAP, quantite: -300 }], motif: 'm' }, 'rp2']);
+  assert.strictEqual(prevLigne(env, DAP)['Qte correction'], -300);
+  let c = env.lignes('SORTIE1', 'AJUSTEMENTS_SEMAINE');
+  assert.deepStrictEqual(c.map((x) => x.Statut), ['ANNULE', 'ACTIF']);
+  appel(env, 'reprevision', [{ corrections: [{ entite: 'Coop EUREDEN', code: DAP, quantite: '' }], motif: '' }, 'rp3']);
+  c = env.lignes('SORTIE1', 'AJUSTEMENTS_SEMAINE');
+  assert.deepStrictEqual(c.map((x) => x.Statut), ['ANNULE', 'ANNULE']);
+  assert.strictEqual(prevLigne(env, DAP)['Qte arbitree'], STAT_DAP);
+});
+test('reprévision : motif, doublon, impact et entité contrôlés avant toute écriture', () => {
+  const env = envPrev(); env.moi('guillaume@eureden.com');
+  const code = (corr, motif) => appel(env, 'reprevision', [{ corrections: corr, motif: motif === undefined ? 'm' : motif }, 'x' + Math.random()]).code;
+  assert.strictEqual(code([{ entite: 'Coop EUREDEN', code: DAP, quantite: 5 }], ''), 'MOTIF_OBLIGATOIRE');
+  assert.strictEqual(code([{ entite: 'Coop EUREDEN', code: DAP, quantite: 5 }, { entite: 'coop eureden', code: DAP, quantite: 6 }]), 'DOUBLON');
+  assert.strictEqual(code([{ entite: 'Coop EUREDEN', code: DAP, quantite: 5, pourcent: 5 }]), 'IMPACT_INVALIDE');
+  assert.strictEqual(code([{ entite: 'Inconnue', code: DAP, quantite: 5 }]), 'ENTITE_INCONNUE');
+  assert.strictEqual(code([{ entite: 'Coop EUREDEN', code: '', quantite: 5 }]), 'CODE_OBLIGATOIRE');
+  assert.strictEqual(env.lignes('SORTIE1', 'AJUSTEMENTS_SEMAINE').length, 0);
+  assert.strictEqual(env.lignes('SORTIE1', 'VERSIONS').length, 0);
+});
+test('reprévision : droits, campagne gelée et opération rejouée', () => {
+  const env = envPrev(); env.moi('rm.engrais@eureden.com');
+  assert.strictEqual(appel(env, 'reprevision', [{ corrections: [] }, 'a']).code, 'CAPACITE_REFUSEE');
+  const env2 = envPrev(); env2.moi('guillaume@eureden.com');
+  appel(env2, 'reprevision', [{ corrections: [{ entite: 'Coop EUREDEN', code: DAP, quantite: 5 }], motif: 'm' }, 'rp1']);
+  const r = appel(env2, 'reprevision', [{ corrections: [{ entite: 'Coop EUREDEN', code: DAP, quantite: 5 }], motif: 'm' }, 'rp1']);
+  assert.strictEqual(r.data.rejoue, true);
+  assert.strictEqual(env2.lignes('SORTIE1', 'AJUSTEMENTS_SEMAINE').length, 1);
+  const env3 = envPrev(); env3.moi('guillaume@eureden.com');
+  env3.feuille('PARAM_FICHIER_TEST_00001', 'CAMPAGNES')._data[1][10] = 'GELEE';
+  assert.strictEqual(appel(env3, 'reprevision', [{ corrections: [] }, 'g']).code, 'CAMPAGNE_FERMEE');
+});
+test('prévision courante : totaux en hectares et en valeur, coefficients par article', () => {
+  const env = envPrev(); env.moi('guillaume@eureden.com');
+  env.run("apiCalculerStatistique({}, 'op0')");
+  const d = env.run('apiPrevision()').data;
+  assert.strictEqual(d.anneeReference, '2025');
+  const eur = d.totaux.filter((t) => t.entite === 'Coop EUREDEN')[0];
+  assert.strictEqual(eur.ha.n1, 169);
+  assert.strictEqual(eur.eur.n1, 15800);
+  const a = d.articles.filter((x) => x.code === DAP)[0];
+  assert.ok(Math.abs(a.rh - 169 / 16900) < 1e-9);
+  assert.ok(Math.abs(a.re - 15800 / 16900) < 1e-9);
+  assert.ok(Math.abs(eur.eur.retenue - STAT_DAP * 15800 / 16900) < 0.01);
+});
+test('tableau de bord : sans prévision, alerte et échéances', () => {
+  const env = envPrev(); env.moi('guillaume@eureden.com');
+  const d = appel(env, 'tableauDeBord').data;
+  assert.strictEqual(d.version, null);
+  assert.ok(d.alertes.some((a) => a.titre === 'Aucune prévision'));
+  assert.ok(d.alertes.some((a) => /Budget/.test(a.detail) && a.titre === 'Source non connectée'));
+  assert.strictEqual(d.echeances.filter((e) => e.courante).length, 1);
+});
+test('tableau de bord : écarts, saisies non appliquées, articles non reconduits', () => {
+  const env = envPrev(); env.moi('guillaume@eureden.com');
+  env.run("apiCalculerStatistique({}, 'op0')");
+  ajout(env, { nature: 'CORRECTION', code: DAP, entite: 'Coop EUREDEN', quantite: -9000, motif: 'm' }, 'c1');
+  let d = appel(env, 'tableauDeBord').data;
+  assert.ok(d.alertes.some((a) => a.titre === 'Saisies non appliquées'));
+  env.run("apiArbitrer({}, 'a1')");
+  d = appel(env, 'tableauDeBord').data;
+  assert.ok(!d.alertes.some((a) => a.titre === 'Saisies non appliquées'));
+  assert.ok(d.alertes.some((a) => /^Écart vs 2025 > 15 %$/.test(a.titre) && /D\.A\.P\./.test(a.detail)));
+  assert.strictEqual(d.version.type, 'ARBITREE');
+});
+test('tableau de bord : un arrêt ajouté après la version, ou une annulation, est signalé comme non appliqué', () => {
+  const env = envPrev(); env.moi('guillaume@eureden.com');
+  appel(env, 'reprevision', [{ corrections: [{ entite: 'Coop EUREDEN', code: DAP, quantite: -5 }], motif: 'm' }, 'rp1']);
+  assert.ok(!appel(env, 'tableauDeBord').data.alertes.some((a) => a.titre === 'Saisies non appliquées'));
+  ajout(env, { nature: 'ARRET', ancien: ONA_ART }, 's1');
+  assert.ok(appel(env, 'tableauDeBord').data.alertes.some((a) => a.titre === 'Saisies non appliquées'));
+  appel(env, 'reprevision', [{ corrections: [] }, 'rp2']);
+  assert.ok(!appel(env, 'tableauDeBord').data.alertes.some((a) => a.titre === 'Saisies non appliquées'));
+  env.run("apiAnnulerAjustement('SUBSTITUTION', 'SUB_001', 'n1')");
+  assert.ok(appel(env, 'tableauDeBord').data.alertes.some((a) => a.titre === 'Saisies non appliquées'));
+});
+test('tableau de bord : une source budget déclarée n\'apparaît plus comme manquante', () => {
+  const env = envPrev(); env.moi('guillaume@eureden.com');
+  env.semer('PARAM_FICHIER_TEST_00001', 'SOURCES', [{ 'ID source': 'BUD', Nature: 'BUDGET', 'ID fichier': 'FICHIER_BUDGET_00000000001', 'Actif import': 'OUI' }]);
+  const d = appel(env, 'tableauDeBord').data;
+  assert.ok(!d.alertes.some((a) => a.titre === 'Source non connectée' && /Budget/.test(a.detail)));
+});
+test('sources : état de chaque fichier déclaré, liens réservés à la configuration', () => {
+  const env = envPrev(); env.moi('admin@eureden.com');
+  env.semer('PARAM_FICHIER_TEST_00001', 'SOURCES', [
+    { 'ID source': 'SANS_ID', Nature: 'BUDGET', 'Actif import': 'OUI' },
+    { 'ID source': 'INACTIVE', Nature: 'STOCKS', 'ID fichier': 'FICHIER_STOCKS_0000000001', 'Actif import': 'NON' },
+    { 'ID source': 'CASSEE', Nature: 'STOCKS', 'ID fichier': 'FICHIER_INCONNU_0000000001', Onglet: 'X', 'Actif import': 'OUI' }
+  ]);
+  const r = appel(env, 'sources').data;
+  const par = (id) => r.sources.filter((x) => x.id === id)[0];
+  assert.strictEqual(par('HISTO_EUREDEN').etat, 'OK');
+  assert.strictEqual(par('HISTO_EUREDEN').lignes, 5);
+  assert.ok(/docs.google.com\/spreadsheets\/d\/FICHIER_HISTO_EUREDEN_0001/.test(par('HISTO_EUREDEN').lien));
+  assert.strictEqual(par('SANS_ID').etat, 'A_CONNECTER');
+  assert.strictEqual(par('INACTIVE').etat, 'INACTIF');
+  assert.strictEqual(par('CASSEE').etat, 'ERREUR');
+  assert.strictEqual(r.fichiers.length, 2);
+  const env2 = envPrev(); env2.moi('guillaume@eureden.com');
+  const s2 = appel(env2, 'sources').data;
+  assert.strictEqual(s2.fichiers.length, 0);
+  assert.ok(s2.sources.every((x) => !x.lien));
 });
 
 let echecs = 0;

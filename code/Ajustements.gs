@@ -199,6 +199,59 @@ var Ajustements = (function () {
     return { corrections: corrections, evenements: evenements, substitutions: substitutions, entites: Histo.sources(ctx.idCampagne).map(function (s) { return txt(s.Entite); }) };
   }
 
+  // Corrections saisies en bloc dans le tableau de prévision : chaque ligne donne la correction nette voulue pour un article.
+  // Une ligne sans quantité ni pourcentage supprime les corrections actives de l'article. Tout est contrôlé avant la première écriture.
+  function preparerCorrections(items, motif, commentaire) {
+    var lignes = [];
+    var vues = {};
+    var avecImpact = 0;
+    (items || []).forEach(function (it, i) {
+      var code = txt(it && it.code);
+      var entite = nomEntite(it && it.entite);
+      if (!code) throw new AppError('CODE_OBLIGATOIRE', 'Ligne ' + (i + 1) + ' : code produit manquant.');
+      if (!entite) throw new AppError('ENTITE_INCONNUE', 'Ligne ' + (i + 1) + ' : entité inconnue.');
+      var k = cle(entite, code);
+      if (vues[k]) throw new AppError('DOUBLON', 'L\'article ' + code + ' (' + entite + ') est saisi deux fois.');
+      vues[k] = true;
+      var q = txt(it.quantite) === '' ? NaN : nombre(it.quantite), p = txt(it.pourcent) === '' ? NaN : nombre(it.pourcent);
+      var vide = (isNaN(q) || q === 0) && (isNaN(p) || p === 0);
+      if (vide) { lignes.push({ entite: entite, code: code, quantite: '', pourcent: '' }); return; }
+      if (!isNaN(q) && q !== 0 && !isNaN(p) && p !== 0) throw new AppError('IMPACT_INVALIDE', 'Article ' + code + ' : une quantité ou un pourcentage, pas les deux.');
+      if (!isNaN(p) && p !== 0 && (p < -100 || p > 1000)) throw new AppError('IMPACT_INVALIDE', 'Article ' + code + ' : le pourcentage doit être entre -100 et 1000.');
+      avecImpact++;
+      lignes.push({ entite: entite, code: code, quantite: !isNaN(q) && q !== 0 ? q : '', pourcent: !isNaN(p) && p !== 0 ? p : '' });
+    });
+    if (avecImpact && !txt(motif)) throw new AppError('MOTIF_OBLIGATOIRE', 'Le motif de la reprévision est obligatoire.');
+    var texte = txt(motif) + (txt(commentaire) ? ' – ' + txt(commentaire) : '');
+    lignes.forEach(function (l) { l.motif = texte; });
+    return lignes;
+  }
+
+  function remplacerCorrections(acteur, ctx, lignes, idOperation) {
+    var cree = 0, annule = 0;
+    var maintenantTxt = maintenant();
+    lignes.forEach(function (l) {
+      var actives = Store.read(ctx.idSortie, 'AJUSTEMENTS_SEMAINE').rows.filter(function (r) {
+        return norm(r.Type) === 'CORRECTION' && norm(r.Statut) === 'ACTIF' && cle(r.Entite, r['Code produit']) === cle(l.entite, l.code);
+      });
+      actives.forEach(function (r) {
+        Store.updateRow(ctx.idSortie, 'AJUSTEMENTS_SEMAINE', r._row, { 'Statut': 'ANNULE', 'Annule par': acteur.email, 'Annule le': maintenantTxt });
+        Journal.log(ctx.idSortie, acteur, 'AJUSTEMENT_ANNULE', txt(r['ID ajustement']), 'ACTIF', 'ANNULE', 'Remplacé par la reprévision', idOperation);
+        annule++;
+      });
+      if (l.quantite === '' && l.pourcent === '') return;
+      var id = suivant(Store.read(ctx.idSortie, 'AJUSTEMENTS_SEMAINE').rows, 'ID ajustement', 'COR', 4);
+      Store.append(ctx.idSortie, 'AJUSTEMENTS_SEMAINE', [{
+        'ID ajustement': id, 'Code produit': l.code, 'Marche': '', 'Entite': l.entite, 'Plateforme': '*',
+        'Semaine debut': '', 'Semaine fin': '', 'Type': 'CORRECTION', 'Quantite': l.quantite, 'Pourcent': l.pourcent, 'Motif': l.motif,
+        'Statut': 'ACTIF', 'Cree par': acteur.email, 'Cree le': maintenantTxt
+      }]);
+      Journal.log(ctx.idSortie, acteur, 'AJUSTEMENT_CREE', id, '', 'CORRECTION', l.motif, idOperation);
+      cree++;
+    });
+    return { cree: cree, annule: annule };
+  }
+
   // Effets des saisies actives sur la prévision statistique.
   // base : { 'ENTITE|code': { entite, code, stat } }. Les pourcentages s'appliquent à la statistique de l'article.
   // Les substitutions se calculent toutes sur la statistique de départ : pas de chaînage A vers B vers C.
@@ -259,5 +312,5 @@ var Ajustements = (function () {
     return res;
   }
 
-  return { creer: creer, annuler: annuler, lister: lister, effets: effets, TYPES_EVENEMENT: TYPES_EVENEMENT };
+  return { creer: creer, annuler: annuler, lister: lister, effets: effets, preparerCorrections: preparerCorrections, remplacerCorrections: remplacerCorrections, TYPES_EVENEMENT: TYPES_EVENEMENT };
 })();

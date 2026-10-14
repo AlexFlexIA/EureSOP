@@ -104,90 +104,119 @@ var Previsions = (function () {
     return JSON.stringify([idCampagne, entite, code, PLATEFORME_NON_AFFECTEE]);
   }
 
-  // type : STATISTIQUE (moyenne pondérée seule) ou ARBITREE (statistique + événements, corrections, substitutions et arrêts).
-  function construire(acteur, type, entree, idOperation) {
+  // Écrit la version (verrou et reçu d'opération déjà pris par l'appelant) : PREVISION, INSTANTANES, journal.
+  function ecrireVersion(acteur, ctx, type, entree, idOperation, histo) {
+    var poids = ponderations();
+    var dec = precision();
+    var courante = Versions.lignesCampagne(ctx).filter(function (r) { return norm(r.Scenario) === 'BASE' && norm(r.Statut) === 'COURANTE'; })[0];
+    if (courante && yes(courante.Verrouillee)) {
+      throw new AppError('VERSION_VERROUILLEE', 'La version courante ' + txt(courante['ID version']) + ' est verrouillée : elle ne peut pas être remplacée.');
+    }
+    if (Store.read(ctx.idSortie, 'PREVISION').rows.some(function (r) { return txt(r['Qte validee']) !== ''; })) {
+      throw new AppError('PREVISION_VALIDEE', 'La prévision contient des quantités validées : elle ne peut plus être recalculée.');
+    }
+
+    var annees = histo.annees;
+    var derniere = annees[annees.length - 1];
+    var base = {};
+    histo.articles.forEach(function (a) {
+      base[norm(a.entite) + '|' + a.code] = {
+        entite: a.entite, code: a.code,
+        n1: a.parAnnee[derniere] ? a.parAnnee[derniere].qte : 0,
+        stat: arrondi(statistique(a.parAnnee, annees, poids), dec)
+      };
+    });
+    var eff = type === 'ARBITREE' ? Ajustements.effets(acteur, base) : { cles: {}, avertissements: [], nbEvenements: 0, nbCorrections: 0, nbSubstitutions: 0 };
+
+    var libelle = txt(entree && entree.libelle) || (type === 'ARBITREE'
+      ? 'Arbitrée : ' + eff.nbEvenements + ' événement(s), ' + eff.nbCorrections + ' correction(s), ' + eff.nbSubstitutions + ' substitution(s) ou arrêt(s)'
+      : 'Statistique ' + poids.join('/') + ' sur ' + annees.join(', '));
+    var version = Versions.creerInterne(acteur, ctx, { type: type, scenario: 'BASE', libelle: libelle, dateReunion: entree && entree.dateReunion, commentaire: entree && entree.commentaire }, idOperation);
+
+    var cles = {};
+    Object.keys(base).forEach(function (k) { cles[k] = true; });
+    Object.keys(eff.cles).forEach(function (k) { cles[k] = true; });
+    var maintenantTxt = maintenant();
+    var lignes = [], photos = [], totaux = {}, negatifs = 0;
+    Object.keys(cles).sort().forEach(function (k) {
+      var b = base[k], f = eff.cles[k];
+      var entite = b ? b.entite : f.entite, code = b ? b.code : f.code;
+      var n1 = b ? b.n1 : 0, stat = b ? b.stat : 0;
+      var id = idLigne(ctx.idCampagne, entite, code);
+      var ligne = {
+        'ID ligne': id, 'Code produit': code, 'Entite': entite, 'Plateforme': PLATEFORME_NON_AFFECTEE,
+        'Qte historique corrigee N-1': arrondi(n1, dec), 'Qte statistique': stat,
+        'Statut': type, 'Version': version.idVersion, 'Modifie par': acteur.email, 'Modifie le': maintenantTxt
+      };
+      var retenue = stat;
+      if (type === 'ARBITREE') {
+        var ev = f ? arrondi(f.evenements, dec) : 0, co = f ? arrondi(f.correction, dec) : 0, su = f ? arrondi(f.substitution, dec) : 0;
+        if (ev) ligne['Qte evenements'] = ev;
+        if (co) ligne['Qte correction'] = co;
+        if (su) ligne['Qte substitution'] = su;
+        var somme = stat + ev + co + su;
+        if (somme < 0) negatifs++;
+        retenue = arrondi(Math.max(0, somme), dec);
+        ligne['Qte arbitree'] = retenue;
+      }
+      lignes.push(ligne);
+      photos.push({ 'ID version': version.idVersion, 'ID ligne': id, 'Qte retenue': retenue });
+      var t = totaux[entite] = totaux[entite] || { entite: entite, n1: 0, statistique: 0, retenue: 0, articles: 0 };
+      t.n1 += n1; t.statistique += stat; t.retenue += retenue; t.articles++;
+    });
+    var avertissements = eff.avertissements.slice();
+    if (negatifs) avertissements.push(negatifs + ' article(s) tombent sous zéro après les corrections : la quantité arbitrée est ramenée à 0.');
+
+    Store.viderDonnees(ctx.idSortie, 'PREVISION');
+    Store.append(ctx.idSortie, 'PREVISION', lignes);
+    Store.append(ctx.idSortie, 'INSTANTANES', photos);
+    Journal.log(ctx.idSortie, acteur, type === 'ARBITREE' ? 'PREVISION_ARBITREE' : 'PREVISION_STATISTIQUE', version.idVersion, '', lignes.length + ' ligne(s)', libelle, idOperation);
+    return {
+      idVersion: version.idVersion, type: type, lignes: lignes.length, ponderation: poids, annees: annees,
+      evenements: eff.nbEvenements, corrections: eff.nbCorrections, substitutions: eff.nbSubstitutions,
+      avertissements: avertissements,
+      totaux: Object.keys(totaux).map(function (k) { return totaux[k]; })
+    };
+
+  }
+
+  function controlerCalcul(acteur, type) {
     Auth.requireCap(acteur, SOP.TYPE_CAP[type]);
     if (!Auth.inScope(acteur, SOP.TYPE_CAP[type], {})) {
       throw new AppError('CAPACITE_REFUSEE', 'Le calcul porte sur tous les articles : il demande un périmètre global.');
     }
     Auth.requireWritable(acteur);
+  }
+
+  // type : STATISTIQUE (moyenne pondérée seule) ou ARBITREE (statistique + événements, corrections, substitutions et arrêts).
+  function construire(acteur, type, entree, idOperation) {
+    controlerCalcul(acteur, type);
     var ctx = Versions.contexte(acteur);
-    var poids = ponderations();
-    var dec = precision();
     var histo = Histo.agreger(acteur, true);
     if (histo.annees.length < 1) throw new AppError('HISTO_VIDE', 'Aucune année d\'historique à exploiter.');
-
     return sousVerrou(function () {
       return Operations.run(ctx.idSortie, acteur, idOperation, function () {
-        var courante = Versions.lignesCampagne(ctx).filter(function (r) { return norm(r.Scenario) === 'BASE' && norm(r.Statut) === 'COURANTE'; })[0];
-        if (courante && yes(courante.Verrouillee)) {
-          throw new AppError('VERSION_VERROUILLEE', 'La version courante ' + txt(courante['ID version']) + ' est verrouillée : elle ne peut pas être remplacée.');
-        }
-        if (Store.read(ctx.idSortie, 'PREVISION').rows.some(function (r) { return txt(r['Qte validee']) !== ''; })) {
-          throw new AppError('PREVISION_VALIDEE', 'La prévision contient des quantités validées : elle ne peut plus être recalculée.');
-        }
+        return ecrireVersion(acteur, ctx, type, entree, idOperation, histo);
+      });
+    });
+  }
 
-        var annees = histo.annees;
-        var derniere = annees[annees.length - 1];
-        var base = {};
-        histo.articles.forEach(function (a) {
-          base[norm(a.entite) + '|' + a.code] = {
-            entite: a.entite, code: a.code,
-            n1: a.parAnnee[derniere] ? a.parAnnee[derniere].qte : 0,
-            stat: arrondi(statistique(a.parAnnee, annees, poids), dec)
-          };
-        });
-        var eff = type === 'ARBITREE' ? Ajustements.effets(acteur, base) : { cles: {}, avertissements: [], nbEvenements: 0, nbCorrections: 0, nbSubstitutions: 0 };
-
-        var libelle = txt(entree && entree.libelle) || (type === 'ARBITREE'
-          ? 'Arbitrée : ' + eff.nbEvenements + ' événement(s), ' + eff.nbCorrections + ' correction(s), ' + eff.nbSubstitutions + ' substitution(s) ou arrêt(s)'
-          : 'Statistique ' + poids.join('/') + ' sur ' + annees.join(', '));
-        var version = Versions.creerInterne(acteur, ctx, { type: type, scenario: 'BASE', libelle: libelle, dateReunion: entree && entree.dateReunion, commentaire: entree && entree.commentaire }, idOperation);
-
-        var cles = {};
-        Object.keys(base).forEach(function (k) { cles[k] = true; });
-        Object.keys(eff.cles).forEach(function (k) { cles[k] = true; });
-        var maintenantTxt = maintenant();
-        var lignes = [], photos = [], totaux = {}, negatifs = 0;
-        Object.keys(cles).sort().forEach(function (k) {
-          var b = base[k], f = eff.cles[k];
-          var entite = b ? b.entite : f.entite, code = b ? b.code : f.code;
-          var n1 = b ? b.n1 : 0, stat = b ? b.stat : 0;
-          var id = idLigne(ctx.idCampagne, entite, code);
-          var ligne = {
-            'ID ligne': id, 'Code produit': code, 'Entite': entite, 'Plateforme': PLATEFORME_NON_AFFECTEE,
-            'Qte historique corrigee N-1': arrondi(n1, dec), 'Qte statistique': stat,
-            'Statut': type, 'Version': version.idVersion, 'Modifie par': acteur.email, 'Modifie le': maintenantTxt
-          };
-          var retenue = stat;
-          if (type === 'ARBITREE') {
-            var ev = f ? arrondi(f.evenements, dec) : 0, co = f ? arrondi(f.correction, dec) : 0, su = f ? arrondi(f.substitution, dec) : 0;
-            if (ev) ligne['Qte evenements'] = ev;
-            if (co) ligne['Qte correction'] = co;
-            if (su) ligne['Qte substitution'] = su;
-            var somme = stat + ev + co + su;
-            if (somme < 0) negatifs++;
-            retenue = arrondi(Math.max(0, somme), dec);
-            ligne['Qte arbitree'] = retenue;
-          }
-          lignes.push(ligne);
-          photos.push({ 'ID version': version.idVersion, 'ID ligne': id, 'Qte retenue': retenue });
-          var t = totaux[entite] = totaux[entite] || { entite: entite, n1: 0, statistique: 0, retenue: 0, articles: 0 };
-          t.n1 += n1; t.statistique += stat; t.retenue += retenue; t.articles++;
-        });
-        var avertissements = eff.avertissements.slice();
-        if (negatifs) avertissements.push(negatifs + ' article(s) tombent sous zéro après les corrections : la quantité arbitrée est ramenée à 0.');
-
-        Store.viderDonnees(ctx.idSortie, 'PREVISION');
-        Store.append(ctx.idSortie, 'PREVISION', lignes);
-        Store.append(ctx.idSortie, 'INSTANTANES', photos);
-        Journal.log(ctx.idSortie, acteur, type === 'ARBITREE' ? 'PREVISION_ARBITREE' : 'PREVISION_STATISTIQUE', version.idVersion, '', lignes.length + ' ligne(s)', libelle, idOperation);
-        return {
-          idVersion: version.idVersion, type: type, lignes: lignes.length, ponderation: poids, annees: annees,
-          evenements: eff.nbEvenements, corrections: eff.nbCorrections, substitutions: eff.nbSubstitutions,
-          avertissements: avertissements,
-          totaux: Object.keys(totaux).map(function (k) { return totaux[k]; })
-        };
+  // Reprévision du comité : remplace les corrections saisies dans le tableau, puis crée la version arbitrée, en une seule opération.
+  function reprevision(acteur, entree, idOperation) {
+    entree = entree || {};
+    controlerCalcul(acteur, 'ARBITREE');
+    Auth.requireCap(acteur, 'correctionPrevision');
+    var ctx = Versions.contexte(acteur);
+    var histo = Histo.agreger(acteur, true);
+    if (histo.annees.length < 1) throw new AppError('HISTO_VIDE', 'Aucune année d\'historique à exploiter.');
+    var lignes = Ajustements.preparerCorrections(entree.corrections || [], entree.motif, entree.commentaire);
+    return sousVerrou(function () {
+      return Operations.run(ctx.idSortie, acteur, idOperation, function () {
+        var changements = Ajustements.remplacerCorrections(acteur, ctx, lignes, idOperation);
+        var res = ecrireVersion(acteur, ctx, 'ARBITREE', { libelle: txt(entree.libelle), commentaire: txt(entree.commentaire), dateReunion: entree.dateReunion }, idOperation, histo);
+        res.corrigees = changements.cree;
+        res.annulees = changements.annule;
+        return res;
       });
     });
   }
@@ -195,41 +224,72 @@ var Previsions = (function () {
   function calculer(acteur, entree, idOperation) { return construire(acteur, 'STATISTIQUE', entree, idOperation); }
   function arbitrer(acteur, entree, idOperation) { return construire(acteur, 'ARBITREE', entree, idOperation); }
 
-  // Prévision courante lue dans PREVISION, avec les libellés de l'historique. Visible selon le périmètre (global ou entité).
-  function courante(acteur) {
+  // Prévision courante lue dans PREVISION, jointe à l'historique (libellés, hectares, valeur). Visible selon le périmètre (global ou entité).
+  // Unités : Q = quantité en unités de stock ; H = hectares ; E = valeur HT. Hectares et valeur d'une quantité prévue se déduisent
+  // de la dernière année où l'article s'est vendu (hectares par unité, euros par unité). Article jamais vendu : coefficient 0.
+  function chargerCourante(acteur) {
     Auth.requireCap(acteur, 'consultation');
     var ctx = Versions.contexte(acteur);
     var version = Versions.lignesCampagne(ctx).filter(function (r) { return norm(r.Scenario) === 'BASE' && norm(r.Statut) === 'COURANTE'; })[0];
     var rows = Store.read(ctx.idSortie, 'PREVISION').rows;
-    if (!version || !rows.length) return { version: null, ponderation: ponderations(), articles: [], totaux: [] };
+    if (!version || !rows.length) return { version: null, ponderation: ponderations(), articles: [], totaux: [], anneeReference: '' };
     var autorise = Histo.filtre(acteur);
     var visibles = rows.filter(function (r) { return autorise(txt(r.Entite), ''); });
-    var libelles = {};
+    var histoParCle = {};
+    var anneeReference = '';
     try {
-      Histo.agreger(acteur, false).articles.forEach(function (a) { libelles[a.entite + '|' + a.code] = a.libelle; });
+      var h = Histo.agreger(acteur, false);
+      anneeReference = h.annees[h.annees.length - 1] || '';
+      h.articles.forEach(function (a) {
+        var dernier = a.parAnnee[anneeReference];
+        var ratio = { rh: 0, re: 0 };
+        for (var i = h.annees.length - 1; i >= 0; i--) {
+          var p = a.parAnnee[h.annees[i]];
+          if (p && p.qte > 0) { ratio = { rh: p.ha / p.qte, re: p.mt / p.qte }; break; }
+        }
+        histoParCle[norm(a.entite) + '|' + a.code] = { libelle: a.libelle, rh: ratio.rh, re: ratio.re, n1ha: dernier ? dernier.ha : 0, n1eur: dernier ? dernier.mt : 0 };
+      });
     } catch (e) {
-      // Sans historique lisible, les codes s'affichent seuls.
+      // Sans historique lisible, les codes s'affichent seuls et les unités autres que la quantité restent à 0.
     }
-    var totaux = {};
     var num = function (v) { var n = Number(v); return isFinite(n) && txt(v) !== '' ? n : 0; };
+    var zero = function () { return { n1: 0, statistique: 0, evenements: 0, correction: 0, substitution: 0, retenue: 0 }; };
+    var totaux = {};
     var articles = visibles.map(function (r) {
-      var entite = txt(r.Entite);
+      var entite = txt(r.Entite), code = txt(r['Code produit']);
+      var hs = histoParCle[norm(entite) + '|' + code] || { libelle: '', rh: 0, re: 0, n1ha: 0, n1eur: 0 };
       var n1 = num(r['Qte historique corrigee N-1']), stat = num(r['Qte statistique']);
       var ev = num(r['Qte evenements']), co = num(r['Qte correction']), su = num(r['Qte substitution']);
       var retenue = txt(r['Qte arbitree']) !== '' ? num(r['Qte arbitree']) : stat;
-      var t = totaux[entite] = totaux[entite] || { entite: entite, n1: 0, statistique: 0, retenue: 0, articles: 0 };
-      t.n1 += n1; t.statistique += stat; t.retenue += retenue; t.articles++;
-      return { code: txt(r['Code produit']), libelle: libelles[entite + '|' + txt(r['Code produit'])] || '', entite: entite, n1: n1, statistique: stat, evenements: ev, correction: co, substitution: su, retenue: retenue };
+      var t = totaux[entite] = totaux[entite] || { entite: entite, articles: 0, q: zero(), ha: zero(), eur: zero() };
+      t.articles++;
+      [['q', 1, n1], ['ha', hs.rh, hs.n1ha], ['eur', hs.re, hs.n1eur]].forEach(function (u) {
+        var m = t[u[0]];
+        m.n1 += u[0] === 'q' ? n1 : u[2];
+        m.statistique += stat * u[1]; m.evenements += ev * u[1]; m.correction += co * u[1]; m.substitution += su * u[1]; m.retenue += retenue * u[1];
+      });
+      return { code: code, libelle: hs.libelle, entite: entite, n1: n1, statistique: stat, evenements: ev, correction: co, substitution: su, retenue: retenue, rh: hs.rh, re: hs.re, n1ha: hs.n1ha, n1eur: hs.n1eur };
     }).sort(function (a, b) { return b.retenue - a.retenue || (a.code < b.code ? -1 : 1); });
     return {
       version: { id: txt(version['ID version']), libelle: txt(version.Libelle), creePar: txt(version['Cree par']), creeLe: txt(version['Cree le']), verrouillee: yes(version.Verrouillee), type: norm(version.Type) },
       ponderation: ponderations(),
-      totaux: Object.keys(totaux).map(function (k) { return totaux[k]; }),
-      nbArticles: articles.length,
-      articles: articles.slice(0, 400),
-      tronque: articles.length > 400
+      anneeReference: anneeReference,
+      totaux: Object.keys(totaux).map(function (k) {
+        var t = totaux[k];
+        // Compatibilité : les champs de quantité restent à la racine.
+        return { entite: t.entite, articles: t.articles, n1: t.q.n1, statistique: t.q.statistique, evenements: t.q.evenements, correction: t.q.correction, substitution: t.q.substitution, retenue: t.q.retenue, q: t.q, ha: t.ha, eur: t.eur };
+      }),
+      articles: articles
     };
   }
 
-  return { calculer: calculer, arbitrer: arbitrer, essai: essai, courante: courante, statistique: statistique, ponderations: ponderations };
+  function courante(acteur) {
+    var d = chargerCourante(acteur);
+    d.nbArticles = d.articles.length;
+    d.tronque = d.articles.length > 400;
+    d.articles = d.articles.slice(0, 400);
+    return d;
+  }
+
+  return { calculer: calculer, arbitrer: arbitrer, reprevision: reprevision, chargerCourante: chargerCourante, essai: essai, courante: courante, statistique: statistique, ponderations: ponderations };
 })();

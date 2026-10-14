@@ -5,33 +5,47 @@
   <meta charset="utf-8">
   <title>Eureden S&amp;OP</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Nunito+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Nunito+Sans:wght@400;600;700;800&family=Caveat:wght@600&display=swap" rel="stylesheet">
   <?!= include('Styles') ?>
 </head>
 <body>
   <div class="bandeau" aria-hidden="true"></div>
-  <div class="page">
-    <div id="chargement" class="bloc-etat"><div class="carte"><h1>Eureden S&amp;OP</h1><p class="sub">Chargement…</p></div></div>
-    <div id="erreur" class="bloc-etat" hidden>
-      <div class="carte">
-        <h1>Accès impossible</h1>
-        <p id="erreur-message" class="sub"></p>
-        <p class="note">Code : <span id="erreur-code"></span>. Si le problème persiste, contactez l'administrateur de l'application.</p>
-        <button class="btn" id="erreur-retour" type="button">Réessayer</button>
-      </div>
-    </div>
-    <div id="app" hidden>
-      <header>
-        <div class="logo"><b>Eureden</b><small>S&amp;OP · Prévisions</small></div>
-        <div><span id="entete-campagne" class="pastille p-marque"></span> <span id="entete-statut" class="pastille p-info"></span></div>
-        <div class="spacer"></div>
-        <div class="moi"><b id="entete-utilisateur"></b><span id="entete-roles"></span></div>
-      </header>
-      <nav id="menu" aria-label="Navigation principale"></nav>
-      <main id="contenu"></main>
+  <div id="chargement" class="bloc-etat"><div class="card"><h1>Eureden S&amp;OP</h1><p class="sub">Chargement…</p></div></div>
+  <div id="erreur" class="bloc-etat" hidden>
+    <div class="card">
+      <h1>Accès impossible</h1>
+      <p id="erreur-message" class="sub"></p>
+      <p class="note">Code : <span id="erreur-code"></span>. Si le problème persiste, contactez l'administrateur de l'application.</p>
+      <button class="btn" id="erreur-retour" type="button">Réessayer</button>
     </div>
   </div>
+  <div class="app" id="app" hidden>
+    <header class="top">
+      <div class="logo"><b>Eureden</b><small>S&amp;OP · Prévisions</small></div>
+      <label class="ctl">Campagne<select id="camp"></select></label>
+      <label class="ctl">Entité<select id="ent"></select></label>
+      <div class="ctl">Unité
+        <div class="seg" role="group" aria-label="Unité d'affichage" id="unites">
+          <button type="button" aria-pressed="true" data-u="Q">Quantité</button>
+          <button type="button" aria-pressed="false" data-u="H">Hectares</button>
+          <button type="button" aria-pressed="false" data-u="E">Valeur €</button>
+          <button type="button" disabled title="Disponible avec le catalogue des produits (poids des articles)">Tonnes</button>
+        </div>
+      </div>
+      <div class="spacer"></div>
+      <span id="entete-statut" class="pill p-info"></span>
+      <div class="user"><b id="entete-utilisateur"></b><span id="entete-roles"></span></div>
+    </header>
+    <nav class="side" id="menu" aria-label="Navigation principale"></nav>
+    <main id="contenu"></main>
+  </div>
+  <dialog id="dlg"></dialog>
   <div id="toast" class="toast" role="status" hidden></div>
-  <?!= include('Client') ?>
+  <?!= include('ClientCore') ?>
+  <?!= include('VueDashboard') ?>
+  <?!= include('VuePrevision') ?>
+  <?!= include('VueHistorique') ?>
+  <?!= include('VueAutres') ?>
+  <script>App.demarrer();</script>
 </body>
 </html>
