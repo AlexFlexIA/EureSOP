@@ -5,7 +5,7 @@
 // La semaine ISO se rattache au mois de son jeudi. L'année des semaines est l'année de prévision de la campagne.
 
 var Cadencage = (function () {
-  var NIVEAUX = ['GLOBAL', 'ARTICLE'];
+  var NIVEAUX = ['GLOBAL', 'MARCHE', 'ARTICLE'];
 
   function pad2(n) { return ('0' + n).slice(-2); }
 
@@ -29,7 +29,11 @@ var Cadencage = (function () {
     return a;
   }
 
-  function cleDe(niveau, cle) { return norm(niveau) + '|' + (norm(niveau) === 'GLOBAL' ? '*' : txt(cle)); }
+  // Clé d'un jeu : le marché se compare sans tenir compte de la casse, le code produit tel quel.
+  function cleDe(niveau, cle) {
+    var n = norm(niveau);
+    return n + '|' + (n === 'GLOBAL' ? '*' : (n === 'MARCHE' ? norm(cle) : txt(cle)));
+  }
 
   // Jeux de coefficients de la campagne : { 'GLOBAL|*': { niveau, cle, semaines: {n: coef}, version, validation, origine, validePar } }
   function lire(acteur) {
@@ -48,8 +52,8 @@ var Cadencage = (function () {
     return jeux;
   }
 
-  // Jeu applicable à un article : le sien, sinon le global, sinon aucun.
-  function profil(jeux, code) { return jeux['ARTICLE|' + txt(code)] || jeux['GLOBAL|*'] || null; }
+  // Jeu applicable à un article : le sien, sinon celui de son marché, sinon le global, sinon aucun.
+  function profil(jeux, code, marche) { return jeux['ARTICLE|' + txt(code)] || (txt(marche) ? jeux['MARCHE|' + norm(marche)] : null) || jeux['GLOBAL|*'] || null; }
 
   // Part de chaque semaine (coef / somme des coefficients), sans arrondi.
   function parts(jeu) {
@@ -99,7 +103,7 @@ var Cadencage = (function () {
     var niveau = norm(entree.niveau);
     if (NIVEAUX.indexOf(niveau) < 0) throw new AppError('NIVEAU_INVALIDE', 'Niveau de cadençage inconnu : ' + txt(entree.niveau) + '.');
     var cle = niveau === 'GLOBAL' ? '*' : txt(entree.cle);
-    if (!cle) throw new AppError('CODE_OBLIGATOIRE', 'Le code produit est obligatoire pour un cadençage d\'article.');
+    if (!cle) throw new AppError('CODE_OBLIGATOIRE', niveau === 'MARCHE' ? 'Le marché est obligatoire pour un cadençage de marché.' : 'Le code produit est obligatoire pour un cadençage d\'article.');
     var annee = anneePrevue(acteur), max = nbSemaines(annee);
     var coefs = {}, somme = 0;
     Object.keys(entree.coefficients || {}).forEach(function (k) {
@@ -133,7 +137,7 @@ var Cadencage = (function () {
   function supprimer(acteur, niveau, cle, idOperation) {
     controlerDroit(acteur, 'arbitrage');
     niveau = norm(niveau);
-    if (niveau !== 'ARTICLE') throw new AppError('NIVEAU_INVALIDE', 'Seul un cadençage d\'article peut être supprimé : le cadençage global se remplace.');
+    if (niveau !== 'ARTICLE' && niveau !== 'MARCHE') throw new AppError('NIVEAU_INVALIDE', 'Seul un cadençage d\'article ou de marché peut être supprimé : le cadençage global se remplace.');
     var ctx = Versions.contexte(acteur);
     return sousVerrou(function () {
       return Operations.run(ctx.idSortie, acteur, idOperation, function () {
@@ -190,7 +194,7 @@ var Cadencage = (function () {
     if (!annee || !Object.keys(jeux).length) return res;
     var d = Previsions.chargerCourante(acteur);
     d.articles.forEach(function (a) {
-      var j = profil(jeux, a.code);
+      var j = profil(jeux, a.code, a.marche);
       if (!j) { res.nonCadences++; return; }
       if (!(a.retenue > 0)) return;
       var cible = res.parArticle[a.code] = res.parArticle[a.code] || {};
@@ -208,7 +212,7 @@ var Cadencage = (function () {
     var annee = Number(acteur.campagne['Annee prevision']) || 0;
     var jeux = lire(acteur);
     var liste = Object.keys(jeux).map(function (k) { return jeux[k]; }).sort(function (a, b) { return a.niveau === b.niveau ? (a.cle < b.cle ? -1 : 1) : (a.niveau === 'GLOBAL' ? -1 : 1); });
-    var res = { annee: annee, nbSemaines: annee ? nbSemaines(annee) : 53, jeux: liste.map(function (j) {
+    var res = { annee: annee, marches: Catalogue.marches(Catalogue.lire(acteur)), nbSemaines: annee ? nbSemaines(annee) : 53, jeux: liste.map(function (j) {
       var libelle = null;
       return { niveau: j.niveau, cle: j.cle, version: j.version, validation: j.validation, validePar: j.validePar, origine: j.origine, semaines: j.semaines, libelle: libelle };
     }), semaines: [], mois: [], nonCadences: 0, entites: [] };
@@ -217,7 +221,7 @@ var Cadencage = (function () {
     if (!d.version) return res;
     var parSem = {}, entites = {};
     d.articles.forEach(function (a) {
-      var j = profil(jeux, a.code);
+      var j = profil(jeux, a.code, a.marche);
       if (!j) { res.nonCadences++; return; }
       entites[a.entite] = true;
       parts(j).forEach(function (x) {

@@ -189,3 +189,13 @@ Sources déclarées dans SOURCES (ID fichier, Onglet, Actif import = OUI) :
 Source de nature `BUDGET` dans SOURCES (ID fichier, Onglet). Colonnes reconnues : `Annee`, `Version budget`, `Mois` (AAAA-MM), `Code produit`, `Entite`, `Quantite`, `Valeur euro` (quantité ou valeur au choix). Seul le budget de l'année de prévision est lu, dans la version du réglage `BUDGET_VERSION` (à défaut la dernière du fichier). Réservé au droit « Voir budget » ; seuls des totaux par mois et par entité sont renvoyés au navigateur.
 
 Le tableau de bord compare la prévision retenue au budget **des mois du cadençage** (indicateur, colonnes Budget et vs budget, courbe mensuelle). Il n'y a pas de budget en hectares. Sans cadençage, le budget attend pour être comparé.
+
+## Catalogue (v0.7.0)
+
+Le catalogue (libellé, marché = groupe de structure, famille, segment, unité de stock) est lu dans la même source `PREV_TC` que la saisie des TC (même fichier, même cache). Sans cette source, il est vide et l'application fonctionne sans marché ni unité.
+
+- Dans le tableau de bord : **vue comité par marché** ; dans la prévision : filtre par marché et marché sous le code produit.
+- **Cadençage par marché** : le jeu d'un marché (`COEFFICIENTS`, niveau `MARCHE`, clé = nom du marché, casse indifférente) remplace le cadençage global pour ses articles ; le jeu d'un article remplace celui de son marché.
+- `PREVISION.Unite stock` et les onglets de publication portent l'unité du catalogue. Les tonnes sont renseignées pour les articles en **KG** (÷ 1000) ; pour les unités et les litres elles restent vides tant que le poids des articles n'est pas lu.
+
+Voir aussi `docs/mise-en-service.md` (branchement de chaque source).

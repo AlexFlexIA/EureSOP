@@ -103,6 +103,24 @@
       }).join('') +
       (lignes.length > 1 ? '<tr class="tot"><td>Total</td><td class="n">' + App.n0(t.articles) + '</td><td class="n">' + App.fmt(t.n1) + '</td><td class="n">' + App.fmt(t.statistique) + '</td><td class="n">' + (d.tc && d.tc.couverture ? App.fmt(t.tc) : '–') + '</td><td class="n">' + App.fmt(t.retenue) + '</td><td class="n">' + (t.n1 ? App.pct((t.retenue / t.n1 - 1) * 100) : '—') + '</td>' + (avecBudget ? cellBudget(App.etat.entite, t.retenue) : '') + '<td></td></tr>' : '') + '</tbody>';
 
+    // Vue comité par marché (catalogue EurePrev) : mêmes colonnes, entité filtrée par l'en-tête.
+    var parMarche = '';
+    var marches = {};
+    (d.totauxMarche || []).forEach(function (x) {
+      if (App.etat.entite && x.entite !== App.etat.entite || !x.marche) return;
+      var m = marches[x.marche] = marches[x.marche] || { articles: 0, n1: 0, statistique: 0, tc: 0, retenue: 0 };
+      m.articles += x.articles;
+      ['n1', 'statistique', 'tc', 'retenue'].forEach(function (k) { m[k] += x[cle][k]; });
+    });
+    var nomsMarches = Object.keys(marches).sort();
+    if (nomsMarches.length) {
+      parMarche = '<div class="card"><h2>Vue comité par marché <small>maille marché (groupe de structure du catalogue)</small></h2><div class="scroll"><table><thead><tr><th>Marché</th><th class="n">Articles</th><th class="n">Réalisé ' + esc(ref) + '</th><th class="n">Statistique</th><th class="n">Prév. TC</th><th class="n">Retenue</th><th class="n">vs ' + esc(ref) + '</th><th>Lecture</th></tr></thead><tbody>' +
+        nomsMarches.map(function (nom) {
+          var m = marches[nom];
+          var lect = !d.version ? App.pill('info', 'À calculer', 'ℹ') : (m.n1 && Math.abs(m.retenue / m.n1 - 1) * 100 > (s.seuilEcart || 15) ? App.pill('warn', 'Écart ' + ref + ' élevé', '⚠') : App.pill('ok', 'Dans la cible', '✓'));
+          return '<tr><td><b>' + esc(nom) + '</b></td><td class="n">' + App.n0(m.articles) + '</td><td class="n">' + App.fmt(m.n1) + '</td><td class="n">' + App.fmt(m.statistique) + '</td><td class="n">' + (d.tc && d.tc.couverture ? App.fmt(m.tc) : '–') + '</td><td class="n"><b>' + App.fmt(m.retenue) + '</b></td><td class="n">' + (m.n1 ? App.pct((m.retenue / m.n1 - 1) * 100) : '—') + '</td><td>' + lect + '</td></tr>';
+        }).join('') + '</tbody></table></div></div>';
+    }
     var tl = d.echeances.length ? '<div class="tl">' + d.echeances.map(function (e) {
       var dates = e.debut ? (e.debut + (e.fin ? ' → ' + e.fin : '')) : '';
       return '<div class="' + (e.courante ? 'cur' : '') + '">' + esc(e.libelle) + '<br><span class="note">' + esc(e.statut.toLowerCase()) + (dates ? '<br>' + esc(dates) : '') + '</span></div>';
@@ -116,7 +134,8 @@
       '<div class="card"><h2>Alertes automatiques <small>' + alertes.length + ' au total</small></h2>' + al + '</div></div>' +
       carteMensuelle(cad, bud) +
       '<div class="card" style="margin-top:16px"><h2>Vue comité par entité <small>maille entité</small></h2><div class="scroll"><table>' + tableau + '</table></div>' +
-      '<p class="note">La vue par marché viendra avec le catalogue des produits.' + (App.etat.unite !== 'Q' ? ' Hectares et valeur sont déduits de la dernière année de vente de chaque article.' : '') + '</p></div>' +
+      '<p class="note">' + (nomsMarches.length ? '' : 'La vue par marché apparaît quand le catalogue est lu (source PREV_TC, sortie EurePrev). ') + (App.etat.unite !== 'Q' ? ' Hectares et valeur sont déduits de la dernière année de vente de chaque article.' : '') + '</p></div>' +
+      parMarche +
       '<div class="card"><h2>Campagnes <small>statut de chaque campagne</small></h2>' + tl + '</div>';
   }
 

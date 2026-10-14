@@ -173,6 +173,7 @@ var Previsions = (function () {
       avertissementsTc.push(e.message);
     }
     var baseTc = norm(Params.reglages().BASE_ARBITRAGE) === 'TC';
+    var catalogue = tcLu && tcLu.catalogue ? tcLu.catalogue : {};
     if (tcLu) {
       Object.keys(tcLu.parArticle).forEach(function (k) {
         var x = tcLu.parArticle[k];
@@ -204,6 +205,7 @@ var Previsions = (function () {
         'Statut': type, 'Version': version.idVersion, 'Modifie par': acteur.email, 'Modifie le': maintenantTxt
       };
       if (tc !== undefined) ligne['Qte TC'] = tc;
+      if (catalogue[code] && catalogue[code].unite) ligne['Unite stock'] = catalogue[code].unite;
       var retenue = stat;
       if (type === 'ARBITREE') {
         var ev = f ? arrondi(f.evenements, dec) : 0, co = f ? arrondi(f.correction, dec) : 0, su = f ? arrondi(f.substitution, dec) : 0;
@@ -308,12 +310,14 @@ var Previsions = (function () {
     } catch (e) {
       // Sans historique lisible, les codes s'affichent seuls et les unités autres que la quantité restent à 0.
     }
+    var catalogue = Catalogue.lire(acteur);
     var num = function (v) { var n = Number(v); return isFinite(n) && txt(v) !== '' ? n : 0; };
     var zero = function () { return { n1: 0, statistique: 0, tc: 0, evenements: 0, correction: 0, substitution: 0, retenue: 0 }; };
     var baseTc = norm(Params.reglages().BASE_ARBITRAGE) === 'TC';
-    var totaux = {};
+    var totaux = {}, totauxMarche = {};
     var articles = visibles.map(function (r) {
       var entite = txt(r.Entite), code = txt(r['Code produit']);
+      var cat = catalogue[code] || {};
       var hs = histoParCle[norm(entite) + '|' + code] || { libelle: '', rh: 0, re: 0, n1ha: 0, n1eur: 0 };
       var n1 = num(r['Qte historique corrigee N-1']), stat = num(r['Qte statistique']);
       var ev = num(r['Qte evenements']), co = num(r['Qte correction']), su = num(r['Qte substitution']);
@@ -321,14 +325,18 @@ var Previsions = (function () {
       var arbitree = txt(r['Qte arbitree']) !== '';
       var retenue = arbitree ? num(r['Qte arbitree']) : stat;
       var depart = arbitree && baseTc && tc !== null ? tc : stat;
+      var marche = cat.marche || '';
       var t = totaux[entite] = totaux[entite] || { entite: entite, articles: 0, q: zero(), ha: zero(), eur: zero() };
-      t.articles++;
+      var tm = totauxMarche[entite + '|' + marche] = totauxMarche[entite + '|' + marche] || { entite: entite, marche: marche, articles: 0, q: zero(), ha: zero(), eur: zero() };
+      t.articles++; tm.articles++;
       [['q', 1, n1], ['ha', hs.rh, hs.n1ha], ['eur', hs.re, hs.n1eur]].forEach(function (u) {
-        var m = t[u[0]];
-        m.n1 += u[0] === 'q' ? n1 : u[2];
-        m.statistique += stat * u[1]; m.tc += (tc || 0) * u[1]; m.evenements += ev * u[1]; m.correction += co * u[1]; m.substitution += su * u[1]; m.retenue += retenue * u[1];
+        [t, tm].forEach(function (cible) {
+          var m = cible[u[0]];
+          m.n1 += u[0] === 'q' ? n1 : u[2];
+          m.statistique += stat * u[1]; m.tc += (tc || 0) * u[1]; m.evenements += ev * u[1]; m.correction += co * u[1]; m.substitution += su * u[1]; m.retenue += retenue * u[1];
+        });
       });
-      return { code: code, libelle: hs.libelle, entite: entite, n1: n1, statistique: stat, tc: tc, depart: depart, evenements: ev, correction: co, substitution: su, retenue: retenue, rh: hs.rh, re: hs.re, n1ha: hs.n1ha, n1eur: hs.n1eur };
+      return { code: code, libelle: hs.libelle || cat.libelle || '', marche: marche, famille: cat.famille || '', unite: cat.unite || '', entite: entite, n1: n1, statistique: stat, tc: tc, depart: depart, evenements: ev, correction: co, substitution: su, retenue: retenue, rh: hs.rh, re: hs.re, n1ha: hs.n1ha, n1eur: hs.n1eur };
     }).sort(function (a, b) { return b.retenue - a.retenue || (a.code < b.code ? -1 : 1); });
     return {
       version: { id: txt(version['ID version']), libelle: txt(version.Libelle), creePar: txt(version['Cree par']), creeLe: txt(version['Cree le']), verrouillee: yes(version.Verrouillee), type: norm(version.Type) },
@@ -339,6 +347,8 @@ var Previsions = (function () {
         // Compatibilité : les champs de quantité restent à la racine.
         return { entite: t.entite, articles: t.articles, n1: t.q.n1, statistique: t.q.statistique, tc: t.q.tc, evenements: t.q.evenements, correction: t.q.correction, substitution: t.q.substitution, retenue: t.q.retenue, q: t.q, ha: t.ha, eur: t.eur };
       }),
+      totauxMarche: Object.keys(totauxMarche).map(function (k) { return totauxMarche[k]; }),
+      marches: Catalogue.marches(catalogue),
       articles: articles
     };
   }

@@ -97,6 +97,7 @@ var Dashboard = (function () {
       version: d.version,
       anneeReference: d.anneeReference,
       totaux: d.totaux,
+      totauxMarche: d.totauxMarche,
       tc: tc,
       baseTc: norm(Params.reglages().BASE_ARBITRAGE) === 'TC',
       alertes: alertes(acteur, d, tc),

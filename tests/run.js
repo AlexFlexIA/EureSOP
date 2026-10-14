@@ -1225,7 +1225,8 @@ test('coefficients : somme, semaine, valeur, niveau, code et année contrôlés'
   assert.strictEqual(code({ coefficients: { 5: 150, 6: -50 } }), 'COEFFICIENT_INVALIDE');
   assert.strictEqual(code({ coefficients: { x: 100 } }), 'SEMAINE_INVALIDE');
   assert.strictEqual(code({ coefficients: {} }), 'COEFFICIENT_INVALIDE');
-  assert.strictEqual(code({ niveau: 'MARCHE' }), 'NIVEAU_INVALIDE');
+  assert.strictEqual(code({ niveau: 'FAMILLE' }), 'NIVEAU_INVALIDE');
+  assert.strictEqual(code({ niveau: 'MARCHE' }), 'CODE_OBLIGATOIRE');
   assert.strictEqual(code({ niveau: 'ARTICLE', cle: '' }), 'CODE_OBLIGATOIRE');
   assert.strictEqual(coefLignes(env).length, 0);
   const sans = envPrev(); sans.moi('guillaume@eureden.com');
@@ -1580,17 +1581,17 @@ test('contrôles : année de prévision absente et source illisible signalées',
 
 // ---------- Saisie des TC (PREV_TC) ----------
 const F_TC = 'FICHIER_EUREPREV_TC_0000001';
-const ENT_TC = ['N° TC', 'Code technicien Appro/DTD', 'Code produit long Triskalia', '_Canal de distribution', 'Saisie pour prévisions Coop (Oui ou Non)', 'PREV 2027', 'PREV 2027 en QTE', 'PREV 2027 en SURFACE', 'Etat saisie'];
+const ENT_TC = ['N° TC', 'Code technicien Appro/DTD', 'Code produit long Triskalia', '_Canal de distribution', 'Saisie pour prévisions Coop (Oui ou Non)', 'PREV 2027', 'PREV 2027 en QTE', 'PREV 2027 en SURFACE', 'Etat saisie', 'Libellé produit de la coop origine', 'Libellé groupe structure Triskalia', 'Libellé famille structure Triskalia', 'Segmentation technico économique', 'Libelle abrege unite cpte stock TK'];
 function envTC(opts) {
   opts = opts || {};
   const env = envCad(); env.moi('admin@eureden.com');
   env.ajouterClasseur(F_TC, { DONNEES: [ENT_TC,
-    [1, 102441, 1109939, 'Coop EUREDEN', 'OUI', '', 9000, '', 'SAISI'],
-    [2, 199405, 1109939, 'Coop EUREDEN', 'OUI', '', '8 000,5', '', 'SAISI'],
-    [3, 111111, 1109939, 'Coop EUREDEN', 'OUI', '', '', '', 'NON_RENSEIGNE'],
-    [4, 159304, 2200001, 'NEGOCE ONA', 'OUI', '', 0, '', 'SAISI'],
-    [5, 159305, 3300003, 'NEGOCE ONA', 'OUI', '', 70, '', 'SAISI'],
-    [6, 159306, 4400004, 'NEGOCE ONA', 'NON', '', 5, '', 'SAISI']] });
+    [1, 102441, 1109939, 'Coop EUREDEN', 'OUI', '', 9000, '', 'SAISI', 'D.A.P. 35K', 'ENGRAIS', 'NUTRITION', 'PERF', 'U'],
+    [2, 199405, 1109939, 'Coop EUREDEN', 'OUI', '', '8 000,5', '', 'SAISI', '', '', '', '', ''],
+    [3, 111111, 1109939, 'Coop EUREDEN', 'OUI', '', '', '', 'NON_RENSEIGNE', '', '', '', '', ''],
+    [4, 159304, 2200001, 'NEGOCE ONA', 'OUI', '', 0, '', 'SAISI', 'AUTRE ARTICLE', 'SEMENCES', 'GRAINES', 'REF', 'KG'],
+    [5, 159305, 3300003, 'NEGOCE ONA', 'OUI', '', 70, '', 'SAISI', 'NOUVEAUTE', 'ENGRAIS', 'NUTRITION', 'PERF', 'KG'],
+    [6, 159306, 4400004, 'NEGOCE ONA', 'NON', '', 5, '', 'SAISI', 'HORS SAISIE', 'ENGRAIS', 'NUTRITION', 'ACC', 'U']] });
   env.semer('PARAM_FICHIER_TEST_00001', 'SOURCES', [{ 'ID source': 'TC', Nature: 'PREV_TC', 'ID fichier': F_TC, Onglet: 'DONNEES', 'Actif import': 'OUI' }]);
   if (opts.base) env.semer('PARAM_FICHIER_TEST_00001', 'REGLAGES', [{ Cle: 'BASE_ARBITRAGE', Valeur: opts.base }]);
   return env;
@@ -1693,7 +1694,7 @@ test('saisie des TC : le tableau de bord signale les écarts avec la statistique
   // D.A.P. : 17 001 contre 16 345, soit +4 %, sous le seuil de 15 % : pas d'alerte. L'autre article et l'article sans statistique en ont une.
   assert.ok(!d.alertes.some((a) => a.titre === 'Saisie TC vs statistique' && /D\.A\.P\./.test(a.detail)));
   assert.ok(d.alertes.some((a) => a.titre === 'Saisie TC vs statistique' && /AUTRE ARTICLE/.test(a.detail) && /TC 0 contre statistique 50 \(-100 %\)/.test(a.detail)));
-  assert.ok(d.alertes.some((a) => a.titre === 'Saisie TC vs statistique' && /3300003/.test(a.detail) && /pas de statistique/.test(a.detail)));
+  assert.ok(d.alertes.some((a) => a.titre === 'Saisie TC vs statistique' && /NOUVEAUTE/.test(a.detail) && /pas de statistique/.test(a.detail)));
   assert.ok(d.alertes.some((a) => a.titre === 'Saisie des TC incomplète' && /4 TC sur 5/.test(a.detail)));
   assert.ok(!d.alertes.some((a) => a.titre === 'Source non connectée' && /TC/.test(a.detail)));
 });
@@ -1754,6 +1755,100 @@ test('budget : sans droit, sans source, sans année, colonne manquante', () => {
 test('budget : le tableau de bord ne signale plus le budget comme manquant', () => {
   const env = envBud();
   assert.ok(!appel(env, 'tableauDeBord').data.alertes.some((a) => a.titre === 'Source non connectée' && /Budget/.test(a.detail)));
+});
+
+// ---------- Catalogue ----------
+test('catalogue : lu dans la sortie EurePrev, première valeur non vide par code', () => {
+  const env = envTC();
+  const c = env.run('Catalogue.lire(Auth.resolve())');
+  assert.deepStrictEqual(c[DAP], { libelle: 'D.A.P. 35K', marche: 'ENGRAIS', famille: 'NUTRITION', segment: 'PERF', unite: 'U' });
+  assert.strictEqual(c[ONA_ART].unite, 'KG');
+  assert.deepStrictEqual(env.run('Catalogue.marches(Catalogue.lire(Auth.resolve()))'), ['ENGRAIS', 'SEMENCES']);
+});
+test('catalogue : vide sans source, ou si la source est illisible', () => {
+  const env = envCad(); env.moi('admin@eureden.com');
+  assert.deepStrictEqual(env.run('Catalogue.lire(Auth.resolve())'), {});
+  const env2 = envTC();
+  env2.classeurs[F_TC]._feuilles.DONNEES._data[0][6] = 'PREV 2026 en QTE';
+  assert.deepStrictEqual(env2.run('Catalogue.lire(Auth.resolve())'), {});
+});
+test('catalogue : tonnes seulement pour les articles en KG', () => {
+  const env = creerEnvStandard();
+  assert.strictEqual(env.run("Catalogue.tonnes(2500, 'KG')"), 2.5);
+  assert.strictEqual(env.run("Catalogue.tonnes(2500, 'kg')"), 2.5);
+  assert.strictEqual(env.run("Catalogue.tonnes(2500, 'U')"), '');
+  assert.strictEqual(env.run("Catalogue.tonnes(2500, '')"), '');
+});
+test('catalogue : marché, famille, unité et libellé sur la prévision courante, totaux par marché', () => {
+  const env = envTC();
+  env.run("apiCalculerStatistique({}, 'op0')");
+  const d = env.run('apiPrevision()').data;
+  const a = d.articles.filter((x) => x.code === DAP)[0];
+  assert.strictEqual(a.marche, 'ENGRAIS');
+  assert.strictEqual(a.famille, 'NUTRITION');
+  assert.strictEqual(a.unite, 'U');
+  assert.deepStrictEqual(d.marches, ['ENGRAIS', 'SEMENCES']);
+  const eng = d.totauxMarche.filter((t) => t.entite === 'Coop EUREDEN' && t.marche === 'ENGRAIS')[0];
+  assert.strictEqual(eng.q.statistique, STAT_DAP);
+  assert.strictEqual(eng.articles, 1);
+  const onaEng = d.totauxMarche.filter((t) => t.entite === 'NEGOCE ONA' && t.marche === 'ENGRAIS')[0];
+  assert.strictEqual(onaEng.articles, 2);
+  assert.strictEqual(onaEng.q.tc, 75);
+  assert.strictEqual(prevLigne(env, DAP)['Unite stock'], 'U');
+  assert.strictEqual(prevLigne(env, ONA_ART)['Unite stock'], 'KG');
+});
+test('catalogue : sans catalogue les articles n\'ont pas de marché et un seul groupe vide', () => {
+  const env = envCad(); env.moi('admin@eureden.com');
+  env.run("apiCalculerStatistique({}, 'op0')");
+  const d = env.run('apiPrevision()').data;
+  assert.deepStrictEqual(d.marches, []);
+  assert.ok(d.articles.every((a) => a.marche === '' && a.unite === ''));
+  assert.ok(d.totauxMarche.every((t) => t.marche === ''));
+});
+test('catalogue : le tableau de bord transmet les totaux par marché', () => {
+  const env = envTC();
+  env.run("apiCalculerStatistique({}, 'op0')");
+  const d = appel(env, 'tableauDeBord').data;
+  assert.ok(d.totauxMarche.some((t) => t.entite === 'Coop EUREDEN' && t.marche === 'ENGRAIS' && t.q.tc === 17000.5));
+});
+test('cadençage par marché : l\'article prime sur le marché, le marché sur le global', () => {
+  const env = envTC(); env.moi('admin@eureden.com');
+  reprev(env, [], 'rp1');
+  sauverCoef(env, { coefficients: { 9: 100 } }, 'k1');
+  sauverCoef(env, { niveau: 'MARCHE', cle: 'engrais', coefficients: { 5: 100 } }, 'k2');
+  sauverCoef(env, { niveau: 'ARTICLE', cle: DAP, coefficients: { 13: 100 } }, 'k3');
+  const d = appel(env, 'cadencage').data;
+  assert.deepStrictEqual(d.marches, ['ENGRAIS', 'SEMENCES']);
+  const semaines = (ent) => d.semaines.filter((s) => s.parEntite[ent]).map((s) => s.etiquette);
+  assert.deepStrictEqual(semaines('Coop EUREDEN'), ['2027-S13']);
+  // NEGOCE ONA : l'article de semences suit le global (S09), les articles d'engrais suivent leur marché (S05).
+  assert.deepStrictEqual(semaines('NEGOCE ONA'), ['2027-S05', '2027-S09']);
+  assert.strictEqual(d.jeux.filter((j) => j.niveau === 'MARCHE').length, 1);
+});
+test('cadençage par marché : enregistrement, suppression, marché obligatoire', () => {
+  const env = envTC(); env.moi('admin@eureden.com');
+  assert.strictEqual(sauverCoef(env, { niveau: 'MARCHE', cle: '' }).code, 'CODE_OBLIGATOIRE');
+  assert.strictEqual(sauverCoef(env, { niveau: 'MARCHE', cle: 'Engrais' }, 'k1').ok, true);
+  assert.strictEqual(sauverCoef(env, { niveau: 'MARCHE', cle: 'ENGRAIS', coefficients: { 6: 100 } }, 'k2').data.resultat.version, 2);
+  assert.strictEqual(coefLignes(env).filter((x) => x.Niveau === 'MARCHE').length, 1);
+  assert.strictEqual(appel(env, 'supprimerCoefficients', ['MARCHE', 'engrais', 's1']).ok, true);
+  assert.strictEqual(coefLignes(env).length, 0);
+});
+test('publication : unité de stock du catalogue, tonnes pour les articles en KG', () => {
+  const env = envTC(); env.moi('admin@eureden.com');
+  sauverCoef(env, { coefficients: { 5: 50, 6: 50 } }, 'k1');
+  reprev(env, [{ entite: 'NEGOCE ONA', code: '3300003', quantite: 1930 }], 'rp1');
+  const r = appel(env, 'validerVersion', [{}, 'v1']);
+  assert.strictEqual(r.data.resultat.publication.ecrit, true);
+  const h = env.lignes('SORTIE1', 'PUBLICATION_HEBDO');
+  const dap = h.filter((x) => x['Code produit'] === DAP);
+  assert.ok(dap.every((x) => x['Unite stock'] === 'U' && x['Tonnes demande'] === ''));
+  const kg = h.filter((x) => x['Code produit'] === '3300003');
+  assert.strictEqual(kg.length, 2);
+  assert.ok(kg.every((x) => x['Unite stock'] === 'KG' && x['Tonnes demande'] === x['Quantite demande'] / 1000));
+  const m = env.lignes('SORTIE1', 'PUBLICATION_MENSUELLE').filter((x) => x['Code produit'] === '3300003');
+  assert.strictEqual(m[0]['Quantite demande'], 1930);
+  assert.strictEqual(m[0]['Tonnes reelle'], 1.93);
 });
 
 let echecs = 0;

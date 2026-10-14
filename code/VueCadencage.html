@@ -44,10 +44,11 @@
 
     function editeur() {
       var d = etat.d, j = jeu(etat.niveau, etat.cle);
+      var libJeu = function (x) { return x.niveau === 'MARCHE' ? 'Marché ' + x.cle : 'Article ' + x.cle; };
       var options = '<option value="GLOBAL|*"' + (etat.niveau === 'GLOBAL' ? ' selected' : '') + '>Cadençage global (tous les articles)</option>' +
-        d.jeux.filter(function (x) { return x.niveau === 'ARTICLE'; }).map(function (x) { return '<option value="ARTICLE|' + esc(x.cle) + '"' + (etat.niveau === 'ARTICLE' && etat.cle === x.cle ? ' selected' : '') + '>Article ' + esc(x.cle) + '</option>'; }).join('') +
-        (etat.niveau === 'ARTICLE' && !jeu('ARTICLE', etat.cle) ? '<option value="ARTICLE|' + esc(etat.cle) + '" selected>Article ' + esc(etat.cle) + ' (nouveau)</option>' : '') +
-        (peutEditer ? '<option value="NOUVEAU">+ Cadençage d\'un article…</option>' : '');
+        d.jeux.filter(function (x) { return x.niveau !== 'GLOBAL'; }).map(function (x) { return '<option value="' + x.niveau + '|' + esc(x.cle) + '"' + (etat.niveau === x.niveau && etat.cle === x.cle ? ' selected' : '') + '>' + esc(libJeu(x)) + '</option>'; }).join('') +
+        (etat.niveau !== 'GLOBAL' && !jeu(etat.niveau, etat.cle) ? '<option value="' + etat.niveau + '|' + esc(etat.cle) + '" selected>' + esc(libJeu({ niveau: etat.niveau, cle: etat.cle })) + ' (nouveau)</option>' : '') +
+        (peutEditer ? '<option value="NOUVEAU|MARCHE">+ Cadençage d\'un marché…</option><option value="NOUVEAU|ARTICLE">+ Cadençage d\'un article…</option>' : '');
       var statut = j ? App.pill(j.validation === 'VALIDE' ? 'ok' : 'warn', j.validation === 'VALIDE' ? 'Validé' : 'À valider', j.validation === 'VALIDE' ? '✓' : '⚠') + ' ' + App.pill('info', 'v' + j.version + ' · ' + j.origine.toLowerCase(), '●') : App.pill('info', 'Pas encore défini', 'ℹ');
       var sem = semainesAffichees();
       var grille = sem.length ? '<div class="scroll" style="max-height:300px"><table><thead><tr><th>Semaine</th><th>Mois</th><th class="n">Coefficient (%)</th></tr></thead><tbody>' + sem.map(function (n) {
@@ -62,9 +63,9 @@
         '<div class="row" style="margin-top:12px"><span id="k-somme" class="pill ' + (ok ? 'p-ok' : 'p-bad') + '">' + (ok ? '✓ ' : '✖ ') + 'Total ' + (Math.round(total * 100) / 100) + ' %' + (ok ? '' : ' – doit faire 100 %') + '</span>' +
         (peutEditer ? '<button class="btn pri" id="k-save" type="button">Enregistrer le cadençage</button>' : '') +
         (j && droits.validation && ouverte && j.validation !== 'VALIDE' ? '<button class="btn" id="k-valider" type="button">Valider ce cadençage</button>' : '') +
-        (peutEditer && j && j.niveau === 'ARTICLE' ? '<button class="btn" id="k-suppr" type="button">Supprimer</button>' : '') +
+        (peutEditer && j && j.niveau !== 'GLOBAL' ? '<button class="btn" id="k-suppr" type="button">Supprimer</button>' : '') +
         '<span id="k-msg" class="note" role="status"></span></div>' +
-        '<p class="note">Un coefficient est la part du besoin livrée la semaine indiquée ; les coefficients d\'un jeu font 100. Les semaines sont des semaines ISO de ' + esc(d.annee) + ', rattachées au mois de leur jeudi. Le cadençage d\'un article remplace le cadençage global pour cet article.</p>';
+        '<p class="note">Un coefficient est la part du besoin livrée la semaine indiquée ; les coefficients d\'un jeu font 100. Les semaines sont des semaines ISO de ' + esc(d.annee) + ', rattachées au mois de leur jeudi. Le cadençage d\'un article remplace celui de son marché, qui remplace le cadençage global.</p>';
     }
 
     function moisDe(n) {
@@ -114,16 +115,19 @@
     function brancher() {
       c.querySelector('#k-jeu').onchange = function (e) {
         var v = e.target.value;
-        if (v === 'NOUVEAU') {
+        if (v.indexOf('NOUVEAU|') === 0) {
+          var niveauNouveau = v.split('|')[1], estMarche = niveauNouveau === 'MARCHE';
           App.dialogue({
-            titre: 'Cadençage d\'un article', ok: 'Continuer',
-            corps: '<label for="n-code">Code produit</label><input id="n-code" maxlength="30"><p class="note">Le cadençage de cet article remplacera le cadençage global pour lui.</p>',
+            titre: estMarche ? 'Cadençage d\'un marché' : 'Cadençage d\'un article', ok: 'Continuer',
+            corps: estMarche && etat.d.marches.length
+              ? '<label for="n-code">Marché</label><select id="n-code">' + etat.d.marches.map(function (m) { return '<option>' + esc(m) + '</option>'; }).join('') + '</select><p class="note">Le cadençage du marché remplace le cadençage global pour ses articles, sauf ceux qui ont leur propre cadençage.</p>'
+              : '<label for="n-code">' + (estMarche ? 'Marché' : 'Code produit') + '</label><input id="n-code" maxlength="60"><p class="note">' + (estMarche ? 'Le catalogue (source PREV_TC) n\'est pas lu : saisissez le nom du marché tel qu\'il y figure.' : 'Le cadençage de cet article remplacera celui de son marché ou le cadençage global.') + '</p>',
             surOk: function () {
               var code = (document.querySelector('#dlg #n-code').value || '').trim();
-              if (!code) return { ok: false, message: 'Le code produit est obligatoire.' };
-              charger('ARTICLE', code);
+              if (!code) return { ok: false, message: estMarche ? 'Le marché est obligatoire.' : 'Le code produit est obligatoire.' };
+              charger(niveauNouveau, code);
               var g = jeu('GLOBAL', '*');
-              if (g) Object.keys(g.semaines).forEach(function (k) { etat.coefs[k] = String(g.semaines[k]); });
+              if (g && !Object.keys(etat.coefs).length) Object.keys(g.semaines).forEach(function (k) { etat.coefs[k] = String(g.semaines[k]); });
               var ks = Object.keys(etat.coefs).map(Number).sort(function (x, y) { return x - y; });
               if (ks.length) { etat.de = String(ks[0]); etat.a = String(ks[ks.length - 1]); }
               dessiner(); return { ok: true };
@@ -183,10 +187,10 @@
       var su = c.querySelector('#k-suppr');
       if (su) su.onclick = function () {
         App.dialogue({
-          titre: 'Supprimer le cadençage de l\'article ' + etat.cle, ok: 'Supprimer',
-          corps: '<p>L\'article reprendra le cadençage global.</p>',
+          titre: 'Supprimer le cadençage ' + (etat.niveau === 'MARCHE' ? 'du marché ' : 'de l\'article ') + etat.cle, ok: 'Supprimer',
+          corps: '<p>' + (etat.niveau === 'MARCHE' ? 'Les articles de ce marché reprendront le cadençage global.' : 'L\'article reprendra le cadençage de son marché ou le cadençage global.') + '</p>',
           surOk: function () {
-            return App.appel('supprimerCoefficients', ['ARTICLE', etat.cle, App.idOperation()]).then(function (r) {
+            return App.appel('supprimerCoefficients', [etat.niveau, etat.cle, App.idOperation()]).then(function (r) {
               if (!r.ok) return r; App.toast('Cadençage supprimé.'); recharger('GLOBAL', '*'); return r;
             });
           }
@@ -200,8 +204,8 @@
         if (App.etat.ecran !== 'cadencage') return;
         if (!r.ok) { App.erreur(c, r); return; }
         etat.d = r.data;
-        if (niveau && !(niveau === 'ARTICLE' && !jeu(niveau, cle))) charger(niveau, cle);
-        else if (!jeu(etat.niveau, etat.cle) && etat.niveau !== 'ARTICLE') charger('GLOBAL', '*');
+        if (niveau && !(niveau !== 'GLOBAL' && !jeu(niveau, cle))) charger(niveau, cle);
+        else if (!jeu(etat.niveau, etat.cle) && etat.niveau === 'GLOBAL') charger('GLOBAL', '*');
         dessiner();
       });
     }

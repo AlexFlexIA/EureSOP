@@ -16,6 +16,8 @@ DEFAUTS = {
    ("COUVERTURE_MAX_MOIS","3","Surstock au-dessus"),("PRECISION_QTE","3","Décimales"),("PRECISION_TONNES","3","Décimales"),
    ("MAX_LOT","1000","Lignes modifiées par enregistrement"),("VERSION_REFERENTIEL","1","Incrémenter après modification manuelle"),
    ("PONDERATION_ANNEES","50/30/20","Poids de N-1, N-2, N-3 dans la moyenne pondérée (à valider)"),
+   ("BASE_ARBITRAGE","STATISTIQUE","Quantité de départ de l'arbitrage : STATISTIQUE ou TC (saisie des TC quand elle existe)"),
+   ("BUDGET_VERSION","","Version du budget à comparer. Vide = dernière version du fichier"),
    ("ALPHA_LISSAGE","0,3","Lissage exponentiel (à valider)"),
    ("PUBLICATION_HEBDO_TOUS","NON","OUI = publier tous les articles à la semaine, sinon ceux de PARAMETRES_STOCK"),
    ("HORIZON_HEBDO_SEMAINES","78","Aligné sur le suivi de stock actuel (S32 2025 à S26 2027)"),

@@ -26,8 +26,9 @@ function page() {
   env.ajouterClasseur('FICHIER_STOCKS_0000000001', { Stocks: [['Date stock', 'Plateforme', 'Code produit', 'Entite', 'Stock'],
     ['2027-01-04', 'GLOMEL', '1109939', 'Coop EUREDEN', 5000], ['2027-01-04', 'GRUEL', '1109939', 'Coop EUREDEN', 3000], ['2027-01-04', 'GLOMEL', '2200001', 'NEGOCE ONA', 100]] });
   env.ajouterClasseur('FICHIER_COMMANDES_00000001', { Commandes: [['Code produit', 'Code point', 'Date limite livraison', 'Quantite reste a livrer', 'Code fournisseur'], ['1109939', 'GLOMEL', '2027-02-08', 4000, 'F1']] });
-  env.ajouterClasseur('FICHIER_EUREPREV_TC_0000001', { DONNEES: [['N° TC', 'Code technicien Appro/DTD', 'Code produit long Triskalia', '_Canal de distribution', 'Saisie pour prévisions Coop (Oui ou Non)', 'PREV 2027', 'PREV 2027 en QTE', 'PREV 2027 en SURFACE', 'Etat saisie'],
-    [1, 102441, 1109939, 'Coop EUREDEN', 'OUI', '', 9000, '', 'SAISI'], [2, 199405, 1109939, 'Coop EUREDEN', 'OUI', '', 8000.5, '', 'SAISI'], [3, 111111, 1109939, 'Coop EUREDEN', 'OUI', '', '', '', 'NON_RENSEIGNE']] });
+  env.ajouterClasseur('FICHIER_EUREPREV_TC_0000001', { DONNEES: [['N° TC', 'Code technicien Appro/DTD', 'Code produit long Triskalia', '_Canal de distribution', 'Saisie pour prévisions Coop (Oui ou Non)', 'PREV 2027', 'PREV 2027 en QTE', 'PREV 2027 en SURFACE', 'Etat saisie', 'Libellé produit de la coop origine', 'Libellé groupe structure Triskalia', 'Libellé famille structure Triskalia', 'Segmentation technico économique', 'Libelle abrege unite cpte stock TK'],
+    [1, 102441, 1109939, 'Coop EUREDEN', 'OUI', '', 9000, '', 'SAISI', 'D.A.P. 35K', 'ENGRAIS', 'NUTRITION', 'PERF', 'U'], [2, 199405, 1109939, 'Coop EUREDEN', 'OUI', '', 8000.5, '', 'SAISI', '', '', '', '', ''], [3, 111111, 1109939, 'Coop EUREDEN', 'OUI', '', '', '', 'NON_RENSEIGNE', '', '', '', '', ''],
+    [4, 159304, 2200001, 'NEGOCE ONA', 'OUI', '', 40, '', 'SAISI', 'AUTRE ARTICLE', 'SEMENCES', 'GRAINES', 'REF', 'KG']] });
   env.ajouterClasseur('FICHIER_BUDGET_0000000001', { Budget: [['Annee', 'Version budget', 'Mois', 'Code produit', 'Entite', 'Quantite', 'Valeur euro'],
     [2027, 'V1', '2027-02', '1109939', 'Coop EUREDEN', 5000, 3000], [2027, 'V1', '2027-03', '1109939', 'Coop EUREDEN', 8000, 4800], [2027, 'V1', '2027-04', '1109939', 'Coop EUREDEN', 2000, 1200]] });
   env.semer('PARAM_FICHIER_TEST_00001', 'SOURCES', [
@@ -79,6 +80,10 @@ function page() {
       await p.waitForSelector('#p-table table');
       assert.ok((await texte('#p-table')).includes('D.A.P. 35K'));
       assert.ok(/17\s001/.test(await texte('#p-table')), 'la saisie des TC doit apparaître dans le tableau');
+      assert.ok(/ENGRAIS/.test(await texte('#p-table')), 'le marché doit apparaître sous le code');
+      await p.selectOption('#p-marche', 'SEMENCES');
+      assert.ok(!/D\.A\.P\./.test(await texte('#p-table')), 'le filtre de marché masque les autres marchés');
+      await p.selectOption('#p-marche', '');
       assert.strictEqual(env.lignes('SORTIE1', 'VERSIONS').length, 1);
     });
     await etape('prévision : correction dans le tableau puis reprévision', async () => {
@@ -111,7 +116,7 @@ function page() {
       await p.waitForSelector('main :text("Prévision mensuelle")', { timeout: 3000 }).catch(() => {}); // seulement si un cadençage existe
       const quantite = await texte('main');
       assert.ok(/prévision retenue/i.test(quantite));
-      assert.ok(/2 TC sur 3 ont saisi/.test(quantite), 'la couverture de la saisie doit apparaître');
+      assert.ok(/3 TC sur 4 ont saisi/.test(quantite), 'la couverture de la saisie doit apparaître');
       await p.click('#unites [data-u=E]');
       const valeur = await texte('main');
       assert.ok(/ €/.test(valeur));
@@ -192,10 +197,31 @@ function page() {
       await p.waitForSelector('input[data-sem="9"]');
       assert.strictEqual(await p.inputValue('input[data-sem="9"]'), '11.11');
     });
+    await etape('cadençage par marché : un jeu pour ENGRAIS qui prime sur le global', async () => {
+      await p.click('#menu [data-v=cadencage]');
+      await p.waitForSelector('#k-jeu');
+      await p.selectOption('#k-jeu', 'NOUVEAU|MARCHE');
+      await p.waitForSelector('#dlg[open]');
+      assert.deepStrictEqual(await p.$$eval('#n-code option', (o) => o.map((x) => x.textContent)), ['ENGRAIS', 'SEMENCES']);
+      await p.selectOption('#n-code', 'ENGRAIS');
+      await p.click('#dlg-ok');
+      await p.waitForSelector('#dlg:not([open])', { state: 'attached' });
+      await p.fill('#k-de', '5'); await p.dispatchEvent('#k-de', 'change');
+      await p.fill('#k-a', '6'); await p.dispatchEvent('#k-a', 'change');
+      await p.click('#k-unif');
+      await p.click('#k-save');
+      await p.waitForFunction(() => /Cadençage enregistré/.test(document.body.innerText));
+      const l = env.lignes('PARAM_FICHIER_TEST_00001', 'COEFFICIENTS').filter((x) => x.Niveau === 'MARCHE');
+      assert.deepStrictEqual(l.map((x) => x.Semaine), [5, 6]);
+      assert.ok(l.every((x) => x['Cle niveau'] === 'ENGRAIS'));
+      assert.ok(/Marché ENGRAIS/.test(await p.$eval('#k-jeu', (e) => e.options[e.selectedIndex].textContent)));
+    });
     await etape('tableau de bord : graphique mensuel dès que le cadençage existe', async () => {
       await p.click('#menu [data-v=dashboard]');
       await p.waitForSelector('main :text("Prévision mensuelle")');
       assert.ok(/févr\. 2027/.test(await texte('main')));
+      const tm = await texte('main');
+      assert.ok(/Vue comité par marché/.test(tm) && /ENGRAIS/.test(tm), 'vue par marché absente : ' + tm.replace(/\s+/g, ' ').slice(0, 1500));
       await p.waitForFunction(() => /budget 2027 \(V1\)/i.test(document.body.innerText));
       const t = await texte('main');
       assert.ok(/15\s000/.test(t), 'le budget des mois du cadençage doit apparaître');

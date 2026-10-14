@@ -138,7 +138,8 @@ var Stocks = (function () {
 
     var cMax = reglageNombre('COUVERTURE_MAX_MOIS', 3);
     var libelles = {};
-    try { Previsions.chargerCourante(acteur).articles.forEach(function (a) { if (a.libelle) libelles[a.code] = a.libelle; }); } catch (e) { /* codes seuls */ }
+    var unites = {};
+    try { Previsions.chargerCourante(acteur).articles.forEach(function (a) { if (a.libelle) libelles[a.code] = a.libelle; if (a.unite) unites[a.code] = a.unite; }); } catch (e) { /* codes seuls */ }
 
     var codes = {};
     Object.keys(st.parArticle).forEach(function (c) { codes[c] = true; });
@@ -179,7 +180,7 @@ var Stocks = (function () {
       var lot = lots[a.code] || 0, q = lot > 0 ? Math.ceil(a.manque / lot) * lot : a.manque;
       var idx = indice[a.semaineRupture], dl = delaiDe(a.code);
       var cmd = idx - dl.delai < 0 ? semaines[0] : semaines[idx - dl.delai];
-      return { code: a.code, libelle: a.libelle, semaineBesoin: a.semaineRupture, manque: a.manque, lot: lot, aCommander: arr(q), delai: dl.delai, semaineCommande: cmd, enRetard: idx - dl.delai < 0, fournisseur: dl.fournisseur || fournisseurs[a.code] || '' };
+      return { code: a.code, libelle: a.libelle, semaineBesoin: a.semaineRupture, manque: a.manque, lot: lot, aCommander: arr(q), delai: dl.delai, semaineCommande: cmd, enRetard: idx - dl.delai < 0, unite: unites[a.code] || '', fournisseur: dl.fournisseur || fournisseurs[a.code] || '' };
     }).sort(function (a, b) { return a.semaineCommande < b.semaineCommande ? -1 : a.semaineCommande > b.semaineCommande ? 1 : (b.manque - a.manque); });
 
     var ruptureParSemaine = semaines.map(function (e, i) { return articles.filter(function (a) { return a.mini !== undefined && a.serie[i] < a.mini; }).length; });
