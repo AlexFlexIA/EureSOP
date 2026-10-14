@@ -69,3 +69,7 @@ function apiPrevision() {
 function apiCalculerStatistique(entree, idOperation) {
   return reponse_(function () { return Previsions.calculer(Auth.resolve(), entree || {}, idOperation); });
 }
+
+function apiEssaiPonderation() {
+  return reponse_(function () { return Previsions.essai(Auth.resolve()); });
+}

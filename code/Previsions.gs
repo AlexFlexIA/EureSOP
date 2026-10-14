@@ -47,6 +47,59 @@ var Previsions = (function () {
     return total > 0 ? somme / total : derniere.qte;
   }
 
+  // Pondérations candidates selon le nombre d'années disponibles avant l'année testée.
+  function candidates(k) {
+    if (k <= 1) return [[100]];
+    if (k === 2) return [[100, 0], [70, 30], [60, 40], [50, 50]];
+    return [[100, 0, 0], [60, 30, 10], [50, 30, 20], [40, 30, 30], [34, 33, 33]];
+  }
+
+  // Aide au choix de la pondération : on prédit la dernière année avec les années d'avant seulement,
+  // puis on compare au réel. Erreur = somme des écarts absolus par article et entité / ventes réelles.
+  // Biais = prévision totale / ventes réelles - 1 (positif : on surestime).
+  function essai(acteur) {
+    Auth.requireCap(acteur, 'consultation');
+    if (!Auth.inScope(acteur, 'consultation', {})) {
+      throw new AppError('CAPACITE_REFUSEE', 'Le test porte sur tous les articles : il demande un périmètre global.');
+    }
+    var histo = Histo.agreger(acteur, true);
+    var annees = histo.annees;
+    if (annees.length < 2) throw new AppError('ESSAI_IMPOSSIBLE', 'Il faut au moins deux années d\'historique pour tester une pondération.');
+    var cible = annees[annees.length - 1];
+    var avant = annees.slice(0, annees.length - 1);
+    var actuelle = ponderations().slice(0, Math.min(3, avant.length));
+    var liste = candidates(Math.min(3, avant.length)).map(function (p) { return { ponderation: p, actuelle: false }; });
+    // Même pondération si les parts sont identiques une fois ramenées à 100 (50 seul équivaut à 100 seul).
+    var parts = function (p) { var t = p.reduce(function (a, b) { return a + b; }, 0); return p.map(function (x) { return Math.round(x / t * 100); }).join('/'); };
+    var deja = liste.some(function (c) { return parts(c.ponderation) === parts(actuelle); });
+    if (deja) liste.forEach(function (c) { c.actuelle = parts(c.ponderation) === parts(actuelle); });
+    else liste.push({ ponderation: actuelle, actuelle: true });
+    var totalReel = 0;
+    var articles = histo.articles.map(function (a) {
+      var reel = a.parAnnee[cible] ? a.parAnnee[cible].qte : 0;
+      totalReel += reel;
+      var base = {};
+      avant.forEach(function (y) { if (a.parAnnee[y]) base[y] = a.parAnnee[y]; });
+      return { reel: reel, base: base };
+    });
+    var resultats = liste.map(function (c) {
+      var ecart = 0, prevu = 0;
+      articles.forEach(function (a) {
+        var p = statistique(a.base, avant, c.ponderation);
+        ecart += Math.abs(p - a.reel);
+        prevu += p;
+      });
+      return {
+        ponderation: c.ponderation, actuelle: c.actuelle,
+        erreur: totalReel > 0 ? ecart / totalReel : 0,
+        biais: totalReel > 0 ? prevu / totalReel - 1 : 0
+      };
+    });
+    var meilleur = 0;
+    resultats.forEach(function (r, i) { if (r.erreur < resultats[meilleur].erreur) meilleur = i; });
+    return { anneeTestee: cible, anneesBase: avant, nbArticles: articles.length, meilleur: meilleur, resultats: resultats };
+  }
+
   function idLigne(idCampagne, entite, code) {
     return JSON.stringify([idCampagne, entite, code, PLATEFORME_NON_AFFECTEE]);
   }
@@ -143,5 +196,5 @@ var Previsions = (function () {
     };
   }
 
-  return { calculer: calculer, courante: courante, statistique: statistique, ponderations: ponderations };
+  return { calculer: calculer, essai: essai, courante: courante, statistique: statistique, ponderations: ponderations };
 })();

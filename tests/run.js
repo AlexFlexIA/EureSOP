@@ -571,6 +571,46 @@ test('précision : réglage vide = 3 décimales, réglage 0 = entiers', () => {
   env.run("apiCalculerStatistique({}, 'op1')");
   assert.strictEqual(env.lignes('SORTIE1', 'PREVISION').filter((x) => x['Code produit'] === '1109939')[0]['Qte statistique'], 16345);
 });
+test('essai de pondération : erreur et biais calculés sur la dernière année', () => {
+  const env = envPrev(); env.moi('guillaume@eureden.com');
+  const r = env.run('apiEssaiPonderation()');
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(r.data.anneeTestee, '2025');
+  assert.deepStrictEqual(r.data.anneesBase, ['2024']);
+  // Une seule année avant : prévision 2025 = ventes 2024. Eureden 15420,5 contre 16900 ; ONA 0 contre 50.
+  const reel = 16900 + 50;
+  const attendu = (Math.abs(15420.5 - 16900) + 50) / reel;
+  assert.ok(Math.abs(r.data.resultats[0].erreur - attendu) < 1e-9);
+  assert.ok(Math.abs(r.data.resultats[0].biais - (15420.5 / reel - 1)) < 1e-9);
+  assert.strictEqual(r.data.resultats[0].actuelle, true);
+});
+test('essai de pondération : trois années, la pondération actuelle figure parmi les candidates', () => {
+  const env = envPrev(); env.moi('guillaume@eureden.com');
+  env.ajouterClasseur(FICHIER_EUR, {
+    'Données 2024': [ENT_HISTO, ['a', 1, 'A', 1, 'T', 100, 1, 1]],
+    'Données 2025': [ENT_HISTO, ['a', 1, 'A', 1, 'T', 200, 1, 1]],
+    'Données 2026': [ENT_HISTO, ['a', 1, 'A', 1, 'T', 300, 1, 1]]
+  });
+  env.feuille('PARAM_FICHIER_TEST_00001', 'SOURCES')._data[1][15] = '2024,2025,2026';
+  const r = env.run('apiEssaiPonderation()').data;
+  assert.strictEqual(r.anneeTestee, '2026');
+  const act = r.resultats.filter((x) => x.actuelle);
+  assert.strictEqual(act.length, 1);
+  assert.deepStrictEqual(act[0].ponderation, [50, 30]);
+  // 100/0 : prévision 200 pour un réel de 300 (ONA : 50 en 2025, rien en 2026 donc non reconduit).
+  const cent = r.resultats.filter((x) => x.ponderation.join('/') === '100/0')[0];
+  assert.ok(cent.erreur > 0 && cent.biais < 0);
+});
+test('essai de pondération : une seule année refusé', () => {
+  const env = envPrev(); env.moi('guillaume@eureden.com');
+  env.feuille('PARAM_FICHIER_TEST_00001', 'SOURCES')._data[1][15] = '2025';
+  env.feuille('PARAM_FICHIER_TEST_00001', 'SOURCES')._data[2][15] = '2025';
+  assert.strictEqual(env.run('apiEssaiPonderation()').code, 'ESSAI_IMPOSSIBLE');
+});
+test('essai de pondération : refusé hors périmètre global', () => {
+  const env = envPrev(); env.moi('tc.ok@eureden.com');
+  assert.strictEqual(env.run('apiEssaiPonderation()').code, 'CAPACITE_REFUSEE');
+});
 test('prévision courante : libellés joints, totaux par entité', () => {
   const env = envPrev(); env.moi('guillaume@eureden.com');
   env.run("apiCalculerStatistique({}, 'op1')");

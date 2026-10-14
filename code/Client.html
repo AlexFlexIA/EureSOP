@@ -205,6 +205,7 @@
     if (!d.version) {
       $('#p-contenu').innerHTML = '<div class="carte"><h2>Aucune prévision pour le moment</h2><p>Le calcul lit l\'historique, crée une version « Statistique » et remplit la prévision.</p>' + action + '</div>';
       brancherCalcul();
+      ajouterEssai();
       return;
     }
     var v = d.version;
@@ -220,6 +221,7 @@
       '<div class="tableau" id="p-table" style="margin-top:12px"></div><p class="note" id="p-note"></p></div>';
     $('#p-contenu').innerHTML = entete + tot + liste;
     brancherCalcul();
+    ajouterEssai();
 
     function filtrer() {
       var e = $('#p-entite').value, q = $('#p-texte').value.trim().toLowerCase();
@@ -231,6 +233,30 @@
       $('#p-note').textContent = sel.length + ' article(s)' + (sel.length > 200 ? ', 200 affichés : affinez la recherche' : '') + (d.tronque ? ' · ' + d.nbArticles + ' articles au total, les ' + d.articles.length + ' premiers par quantité sont chargés' : '') + '.';
     }
     $('#p-entite').onchange = filtrer; $('#p-texte').oninput = filtrer; filtrer();
+  }
+
+  function ajouterEssai() {
+    var cible = $('#p-contenu');
+    cible.insertAdjacentHTML('beforeend', '<div class="carte"><h2>Quelle pondération choisir ?</h2>' +
+      '<p>L\'application refait la prévision de la dernière année en n\'utilisant que les années d\'avant, puis la compare à ce qui s\'est réellement vendu. Elle vous montre quelle pondération se serait le moins trompée sur vos données.</p>' +
+      '<div class="rangee"><button class="btn" id="e-lancer" type="button">Tester les pondérations sur l\'historique</button><span id="e-message" class="note" role="status"></span></div><div id="e-resultat" style="margin-top:12px"></div></div>');
+    $('#e-lancer').onclick = function () {
+      var b = $('#e-lancer'), msg = $('#e-message');
+      b.disabled = true; msg.textContent = 'Test en cours…';
+      appel('apiEssaiPonderation').then(function (r) {
+        b.disabled = false; msg.textContent = '';
+        if (!r.ok) { $('#e-resultat').innerHTML = '<p>' + esc(r.message) + '</p>'; return; }
+        var d = r.data;
+        var lignes = d.resultats.map(function (x, i) {
+          var biais = Math.round(x.biais * 100);
+          return '<tr><td>' + esc(x.ponderation.join(' / ')) + (x.actuelle ? ' ' + pastille('p-info', '●', 'Réglage actuel') : '') + (i === d.meilleur ? ' ' + pastille('p-ok', '✓', 'La plus juste') : '') + '</td>' +
+            '<td class="n">' + Math.round(x.erreur * 100) + ' %</td><td class="n">' + (biais > 0 ? '+' : '') + biais + ' %</td></tr>';
+        }).join('');
+        $('#e-resultat').innerHTML = '<p class="note">Test sur ' + esc(d.anneeTestee) + ' avec ' + esc(d.anneesBase.join(', ')) + ' (' + n0(d.nbArticles) + ' articles). La première valeur de la pondération est celle de l\'année la plus récente.</p>' +
+          '<div class="tableau"><table><thead><tr><th>Pondération</th><th>Erreur</th><th>Biais</th></tr></thead><tbody>' + lignes + '</tbody></table></div>' +
+          '<p class="note"><b>Erreur :</b> écart moyen entre prévu et réel, article par article, rapporté aux ventes (plus c\'est bas, mieux c\'est). <b>Biais :</b> écart sur le total (positif = on surestime, négatif = on sous-estime). Pour changer la pondération, modifiez PONDERATION_ANNEES dans REGLAGES, puis recalculez.</p>';
+      });
+    };
   }
 
   function brancherCalcul() {

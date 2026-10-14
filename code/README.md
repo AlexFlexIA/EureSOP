@@ -102,3 +102,7 @@ L'écran **Prévision** calcule, par article et par entité, la moyenne pondér�
 - Le calcul crée une version `STATISTIQUE` (scénario BASE), remplace `PREVISION` (plateforme `*` tant que l'affectation des plateformes n'est pas branchée), écrit la photo dans `INSTANTANES` et journalise.
 - Droits : capacité d'arbitrage et périmètre global. Campagne OUVERTE (ou PREPARATION pour les rôles de configuration).
 - Refus si la version courante est verrouillée, ou si `PREVISION` contient déjà des quantités de TC, d'événements, de correction ou d'arbitrage.
+
+### Aide au choix de la pondération
+
+Le bouton « Tester les pondérations sur l'historique » (écran Prévision) prédit la dernière année d'historique avec les années précédentes seulement, pour plusieurs pondérations, puis compare au réel : erreur (somme des écarts absolus par article et entité / ventes réelles) et biais (total prévu / total réel - 1). Il faut au moins deux années et un périmètre global.
