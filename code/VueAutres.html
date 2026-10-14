@@ -9,12 +9,15 @@
       c.innerHTML = '<h1>' + esc(titre) + '</h1><p class="sub">' + esc(sous) + '</p><div class="card"><h2>Pas encore disponible</h2><p>' + esc(besoin) + '</p></div>';
     };
   }
-  App.vues.cadencage = aVenir('Cadençage', 'Répartition du besoin sur les semaines, puis sur les mois.', 'Cet écran sera relié à l\'onglet COEFFICIENTS des paramètres.');
   App.vues.stocks = aVenir('Projection des stocks', 'Hebdomadaire, par plateforme.', 'Cet écran demande les sources de stocks et de commandes fournisseurs.');
 
   // ---------- Versions & fiabilité ----------
+  var ACTIONS = {
+    VERSION_CREEE: 'Version créée', VERSION_ARCHIVEE: 'Version archivée', VERSION_VERROUILLEE: 'Version verrouillée', VERSION_VALIDEE: 'Version validée',
+    PREVISION_STATISTIQUE: 'Statistique calculée', PREVISION_ARBITREE: 'Reprévision enregistrée', AJUSTEMENT_CREE: 'Saisie enregistrée', AJUSTEMENT_ANNULE: 'Saisie annulée'
+  };
   App.vues.versions = function (c) {
-    var etat = { v: null, fiab: undefined };
+    var etat = { v: null, fiab: undefined, reelle: undefined, cmp: null, journal: undefined };
     var droits = App.etat.session.droits;
     var ouverte = ['GELEE', 'CLOTUREE'].indexOf(App.etat.session.campagne.statut) < 0;
 
@@ -24,9 +27,23 @@
       return '<ul class="vt">' + l.map(function (v, i) {
         var statut = v.statut === 'COURANTE' ? App.pill('ok', 'Courante', '✓') : App.pill('info', 'Archivée', '●');
         var verrou = v.verrouillee ? ' ' + App.pill('brand', 'Verrouillée', '■') : '';
-        var action = !v.verrouillee && v.statut === 'COURANTE' && droits.validation && ouverte ? ' <button class="btn petit" type="button" data-verrou="' + esc(v.id) + '">Verrouiller</button>' : '';
+        var action = v.statut === 'COURANTE' && !v.verrouillee && v.type === 'ARBITREE' && droits.validation && ouverte ? ' <button class="btn petit" type="button" data-valider="' + esc(v.id) + '">Valider la version</button>' : '';
+        if (v.statut === 'COURANTE' && v.type === 'VALIDEE' && droits.validation && ouverte) action = ' <button class="btn petit" type="button" id="v-republier">Republier</button>';
         return '<li class="' + (i === 0 ? 'last' : '') + '"><b>' + esc(v.id) + ' · ' + esc(App.typeVersion(v.type)) + '</b> ' + statut + verrou + action + '<br><span class="note">' + esc(v.libelle) + '<br>' + esc(v.creeLe.replace('T', ' ')) + ' · ' + esc(v.creePar) + (v.commentaire ? '<br>' + esc(v.commentaire) : '') + '</span></li>';
       }).join('') + '</ul>';
+    }
+
+    function blocReelle() {
+      var r = etat.reelle;
+      if (r === undefined) return '<p class="note">Calcul en cours…</p>';
+      if (!r || !r.disponible) return '<div class="vide">' + esc(r ? r.raison : 'Indisponible.') + '</div>';
+      var b = Math.round(r.global.biais * 100);
+      return '<p>Prévision ' + esc(r.version.id) + ' (' + esc(App.typeVersion(r.version.type).toLowerCase()) + ') comparée aux ventes de ' + esc(r.annee) + '.</p><div class="grid g3" style="margin:8px 0">' +
+        '<div class="kpi card"><div class="l">Erreur</div><div class="v">' + Math.round(r.global.erreur * 100) + ' %</div></div>' +
+        '<div class="kpi card"><div class="l">Biais</div><div class="v">' + (b > 0 ? '+' : '') + b + ' %</div><div class="d">' + App.pill('info', b > 0 ? 'sur-prévision' : 'sous-prévision', 'ℹ') + '</div></div></div>' +
+        '<table><thead><tr><th>Entité</th><th class="n">Articles</th><th class="n">Prévu</th><th class="n">Réel</th><th class="n">Erreur</th><th class="n">Biais</th></tr></thead><tbody>' + r.parEntite.map(function (x) {
+          return '<tr><td>' + esc(x.entite) + '</td><td class="n">' + App.n0(x.nb) + '</td><td class="n">' + App.n0(x.prevu) + '</td><td class="n">' + App.n0(x.reel) + '</td><td class="n">' + Math.round(x.erreur * 100) + ' %</td><td class="n">' + App.pct(x.biais * 100) + '</td></tr>';
+        }).join('') + '</tbody></table>';
     }
 
     function fiabilite() {
@@ -42,24 +59,76 @@
         '<p class="note"><b>Erreur :</b> écart entre prévu et réel, article par article, rapporté aux ventes. <b>Biais :</b> écart sur le total (positif = sur-prévision). Pour changer la pondération : réglage PONDERATION_ANNEES, puis recalcul.</p>';
     }
 
+    function blocComparaison() {
+      var v = etat.v;
+      if (v.length < 2) return '<div class="vide">Il faut au moins deux versions pour les comparer.</div>';
+      var opt = function (sel) { return v.map(function (x) { return '<option value="' + esc(x.id) + '"' + (x.id === sel ? ' selected' : '') + '>' + esc(x.id + ' · ' + App.typeVersion(x.type)) + '</option>'; }).join(''); };
+      var cmp = etat.cmp;
+      var a = cmp ? cmp.a.id : v[v.length - 2].id, b = cmp ? cmp.b.id : v[v.length - 1].id;
+      var tableau = '';
+      if (cmp) {
+        tableau = '<p style="margin-top:10px">' + esc(cmp.a.id) + ' : <b>' + App.n0(cmp.totaux.a) + '</b> → ' + esc(cmp.b.id) + ' : <b>' + App.n0(cmp.totaux.b) + '</b> · écart <b>' + (cmp.totaux.delta > 0 ? '+' : '') + App.n0(cmp.totaux.delta) + '</b> (' + cmp.nbModifiees + ' article(s) modifié(s) sur ' + cmp.nbLignes + ')</p>' +
+          (cmp.lignes.length ? '<div class="scroll" style="max-height:340px"><table><thead><tr><th>Article</th><th>Entité</th><th class="n">' + esc(cmp.a.id) + '</th><th class="n">' + esc(cmp.b.id) + '</th><th class="n">Écart</th></tr></thead><tbody>' + cmp.lignes.map(function (l) {
+            return '<tr><td><b>' + esc(l.libelle || l.code) + '</b><br><span class="note">' + esc(l.code) + '</span></td><td>' + esc(l.entite) + '</td><td class="n">' + App.n0(l.a) + '</td><td class="n">' + App.n0(l.b) + '</td><td class="n">' + App.pill(l.delta > 0 ? 'ok' : 'warn', (l.delta > 0 ? '+' : '') + App.n0(l.delta), l.delta > 0 ? '▲' : '▼') + '</td></tr>';
+          }).join('') + '</tbody></table></div>' : '<div class="vide">Les deux versions sont identiques.</div>') + '<p class="note">Quantités en unités de stock.</p>';
+      }
+      return '<div class="row"><label class="ctl" style="margin:0">De<select id="c-a">' + opt(a) + '</select></label><label class="ctl" style="margin:0">À<select id="c-b">' + opt(b) + '</select></label><button class="btn pri" id="c-go" type="button">Comparer</button><span id="c-msg" class="note" role="status"></span></div>' + tableau;
+    }
+
+    function blocJournal() {
+      if (!(droits.configuration || droits.arbitrage)) return '';
+      var j = etat.journal;
+      var corps = j === undefined ? '<p class="note">Chargement…</p>' : (!j ? '' : (j.length ? '<div class="scroll" style="max-height:340px"><table><thead><tr><th>Quand</th><th>Qui</th><th>Action</th><th>Objet</th><th>Détail</th></tr></thead><tbody>' + j.map(function (x) {
+        var detail = [x.avant && x.apres ? x.avant + ' → ' + x.apres : (x.apres || x.avant), x.motif].filter(Boolean).join(' · ');
+        return '<tr><td class="n">' + esc(x.le.replace('T', ' ')) + '</td><td>' + esc(x.par) + '</td><td>' + esc(ACTIONS[x.action] || x.action) + '</td><td>' + esc(x.objet) + '</td><td>' + esc(detail) + '</td></tr>';
+      }).join('') + '</tbody></table></div>' : '<div class="vide">Journal vide.</div>'));
+      return '<div class="card"><h2>Journal des modifications <small>200 dernières entrées</small></h2>' + corps + '</div>';
+    }
+
     function dessiner() {
       if (!etat.v) return;
-      c.innerHTML = '<h1>Versions &amp; fiabilité</h1><p class="sub">Retracer chaque reprévision et mesurer la fiabilité de la méthode.</p>' +
+      c.innerHTML = '<h1>Versions &amp; fiabilité</h1><p class="sub">Retracer chaque reprévision, valider la version du comité et mesurer la fiabilité.</p>' +
         '<div class="grid g2"><div class="card"><h2>Historique des versions <small>' + esc(App.etat.session.campagne.libelle || App.etat.session.campagne.id) + '</small></h2>' + liste() + '</div>' +
-        '<div class="card"><h2>Fiabilité de la méthode</h2>' + fiabilite() + '</div></div>';
-      App.$$('[data-verrou]', c).forEach(function (b) {
+        '<div class="card"><h2>Fiabilité de la prévision <small>prévu contre réalisé</small></h2>' + blocReelle() + '<h2 style="margin-top:18px">Fiabilité de la méthode</h2>' + fiabilite() + '</div></div>' +
+        '<div class="card" style="margin-top:16px"><h2>Écarts entre versions</h2>' + blocComparaison() + '</div>' +
+        '<div class="card"><h2>Exports pour le comité</h2><div class="row"><button class="btn" id="x-prev" type="button">⬇ Prévision courante (Excel)</button><button class="btn" id="x-cmp" type="button"' + (etat.cmp ? '' : ' disabled') + '>⬇ Écarts de versions (Excel)</button>' + (etat.journal ? '<button class="btn" id="x-jrn" type="button">⬇ Journal (Excel)</button>' : '') + '</div><p class="note">Fichiers CSV avec séparateur point-virgule, ouverts directement par Excel.</p></div>' + blocJournal();
+      brancher();
+    }
+
+    function brancher() {
+      App.$$('[data-valider]', c).forEach(function (b) {
         b.onclick = function () {
           App.dialogue({
-            titre: 'Verrouiller la version ' + b.getAttribute('data-verrou'), ok: 'Verrouiller',
-            corps: '<p>Une version verrouillée ne peut plus être remplacée ni recalculée. Cette action est définitive.</p>',
+            titre: 'Valider la version ' + b.getAttribute('data-valider'), ok: 'Valider et verrouiller',
+            corps: '<p>La version validée devient la prévision de référence de la campagne : les quantités retenues sont figées dans « Qte validee » et la version est verrouillée. Cette action est définitive.</p>' +
+              '<label for="d-com">Commentaire</label><textarea id="d-com" rows="2" placeholder="Ex. Comité S&amp;OP du 12/10"></textarea>',
             surOk: function () {
-              return App.appel('verrouillerVersion', [b.getAttribute('data-verrou'), App.idOperation()]).then(function (r) {
-                if (!r.ok) return r; App.toast('Version verrouillée.'); recharger(); return r;
+              var com = (document.querySelector('#dlg #d-com') || {}).value || '';
+              return App.appel('validerVersion', [{ commentaire: com.trim() }, App.idOperation()]).then(function (r) {
+                if (!r.ok) return r;
+                var pub = r.data.resultat.publication;
+                App.toast('Version ' + r.data.resultat.idVersion + ' validée (' + r.data.resultat.lignes + ' lignes). ' + (pub && pub.ecrit ? 'Publication : ' + App.n0(pub.mensuelle) + ' lignes mensuelles, ' + App.n0(pub.hebdo) + ' hebdomadaires.' : 'Publication non écrite : ' + (pub ? pub.raison : 'indisponible')));
+                recharger(); return r;
               });
             }
           });
         };
       });
+      var rp = c.querySelector('#v-republier');
+      if (rp) rp.onclick = function () {
+        App.dialogue({
+          titre: 'Republier la version validée', ok: 'Republier',
+          corps: '<p>Les onglets PUBLICATION_MENSUELLE, PUBLICATION_HEBDO et CONTRAT sont réécrits à partir de la version validée et du cadençage actuel. Les autres applications lisent ces onglets.</p>',
+          surOk: function () {
+            return App.appel('republier', [App.idOperation()]).then(function (r) {
+              if (!r.ok) return r;
+              var p = r.data.resultat;
+              App.toast(p.ecrit ? 'Publication écrite : ' + App.n0(p.mensuelle) + ' lignes mensuelles, ' + App.n0(p.hebdo) + ' hebdomadaires.' : 'Publication non écrite : ' + p.raison);
+              recharger(); return r;
+            });
+          }
+        });
+      };
       var e = c.querySelector('#v-essai');
       if (e) e.onclick = function () {
         e.disabled = true; c.querySelector('#v-essai-msg').textContent = 'Test en cours…';
@@ -68,6 +137,38 @@
           etat.fiab = r.data; dessiner();
         });
       };
+      var go = c.querySelector('#c-go');
+      if (go) go.onclick = function () {
+        var a = c.querySelector('#c-a').value, b = c.querySelector('#c-b').value;
+        go.disabled = true; c.querySelector('#c-msg').textContent = 'Comparaison…';
+        App.donnees('comparerVersions', [a, b]).then(function (r) {
+          if (!r.ok) { go.disabled = false; c.querySelector('#c-msg').textContent = r.message; return; }
+          etat.cmp = r.data; dessiner();
+        });
+      };
+      c.querySelector('#x-prev').onclick = function () {
+        App.appel('exportPrevision', []).then(function (r) {
+          if (!r.ok) { App.toast(r.message); return; }
+          var d = r.data, ent = App.etat.entite, ref = d.anneeReference || 'N-1';
+          var lignes = [['Code', 'Libellé', 'Entité', 'Réalisé ' + ref, 'Statistique', 'Événements', 'Corrections', 'Substitutions', 'Retenue', 'Retenue en hectares', 'Retenue en valeur HT']];
+          d.articles.filter(function (a) { return !ent || a.entite === ent; }).forEach(function (a) {
+            lignes.push([a.code, a.libelle, a.entite, a.n1, a.statistique, a.evenements, a.correction, a.substitution, a.retenue, Math.round(a.retenue * a.rh * 100) / 100, Math.round(a.retenue * a.re * 100) / 100].map(function (v) { return typeof v === 'number' ? Math.round(v * 1000) / 1000 : v; }));
+          });
+          App.telecharger('prevision-' + App.etat.session.campagne.id + (d.version ? '-' + d.version.id : '') + '.csv', lignes);
+        });
+      };
+      var xc = c.querySelector('#x-cmp');
+      if (xc) xc.onclick = function () {
+        var m = etat.cmp, lignes = [['Code', 'Libellé', 'Entité', m.a.id, m.b.id, 'Écart']];
+        m.lignes.forEach(function (l) { lignes.push([l.code, l.libelle, l.entite, l.a, l.b, l.delta]); });
+        App.telecharger('ecarts-' + m.a.id + '-' + m.b.id + '.csv', lignes);
+      };
+      var xj = c.querySelector('#x-jrn');
+      if (xj) xj.onclick = function () {
+        var lignes = [['Quand', 'Qui', 'Action', 'Objet', 'Avant', 'Après', 'Motif']];
+        etat.journal.forEach(function (x) { lignes.push([x.le, x.par, ACTIONS[x.action] || x.action, x.objet, x.avant, x.apres, x.motif]); });
+        App.telecharger('journal-' + App.etat.session.campagne.id + '.csv', lignes);
+      };
     }
 
     function recharger() {
@@ -75,7 +176,11 @@
       return App.donnees('versions').then(function (r) {
         if (App.etat.ecran !== 'versions') return;
         if (!r.ok) { App.erreur(c, r); return; }
-        etat.v = r.data; dessiner();
+        etat.v = r.data; etat.cmp = null; dessiner();
+        App.donnees('fiabiliteReelle').then(function (f) { etat.reelle = f.ok ? f.data : { disponible: false, raison: f.message }; if (App.etat.ecran === 'versions') dessiner(); });
+        if (droits.configuration || droits.arbitrage) {
+          App.donnees('journal', [200]).then(function (j) { etat.journal = j.ok ? j.data : null; if (App.etat.ecran === 'versions') dessiner(); });
+        }
       });
     }
     App.etat.redessiner = dessiner;

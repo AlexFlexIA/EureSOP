@@ -63,3 +63,6 @@ function sousVerrou(fn) {
     lock.releaseLock();
   }
 }
+
+// Version du contrat des onglets PUBLICATION_* lus par les autres applications. À incrémenter si une colonne change.
+SOP.CONTRAT_VERSION = '1.0';

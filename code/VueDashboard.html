@@ -5,7 +5,18 @@
 
   var COULEURS = { n1: '#8A8A8A', stat: '#BAD264', ret: '#514F21' };
 
-  function dessiner(c, d, fiab) {
+  var NOMS_MOIS = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
+  var libMois = function (m) { var p = m.split('-'); return NOMS_MOIS[Number(p[1]) - 1] + ' ' + p[0]; };
+
+  function carteMensuelle(cad) {
+    if (!cad || !cad.mois || !cad.mois.length) return '';
+    var cle = App.UNITES[App.etat.unite].cle, ent = App.etat.entite;
+    var val = function (m) { return Object.keys(m.parEntite).reduce(function (s, e) { return s + (!ent || e === ent ? m.parEntite[e][cle] : 0); }, 0); };
+    var series = [{ nom: 'Retenue', couleur: COULEURS.ret, valeurs: cad.mois.map(val) }];
+    return '<div class="card" style="margin-top:16px"><h2>Prévision mensuelle <small>' + esc(App.UNITES[App.etat.unite].lbl.toLowerCase()) + ', cadençage hebdomadaire regroupé par mois du jeudi</small></h2>' + App.barres(cad.mois.map(function (m) { return libMois(m.mois); }), series, 220) + App.legende(series) + '</div>';
+  }
+
+  function dessiner(c, d, fiab, cad) {
     var s = App.etat.session, t = App.totaux(d.totaux);
     var ref = d.anneeReference || 'N-1';
     var prevue = s.campagne.anneePrevision || '';
@@ -69,6 +80,7 @@
       '<div class="grid g4">' + kpiHtml + '</div>' +
       '<div class="grid g2" style="margin-top:16px"><div class="card"><h2>Prévision par entité <small>' + esc(App.UNITES[App.etat.unite].lbl.toLowerCase()) + '</small></h2>' + graphique + '</div>' +
       '<div class="card"><h2>Alertes automatiques <small>' + alertes.length + ' au total</small></h2>' + al + '</div></div>' +
+      carteMensuelle(cad) +
       '<div class="card" style="margin-top:16px"><h2>Vue comité par entité <small>maille entité</small></h2><div class="scroll"><table>' + tableau + '</table></div>' +
       '<p class="note">La vue par marché viendra avec le catalogue des produits.' + (App.etat.unite !== 'Q' ? ' Hectares et valeur sont déduits de la dernière année de vente de chaque article.' : '') + '</p></div>' +
       '<div class="card"><h2>Campagnes <small>statut de chaque campagne</small></h2>' + tl + '</div>';
@@ -81,13 +93,17 @@
   }
 
   App.vues.dashboard = function (c) {
-    var etat = { d: null, fiab: undefined };
-    var redessiner = function () { if (etat.d) dessiner(c, etat.d, etat.fiab); };
+    var etat = { d: null, fiab: undefined, cad: null };
+    var redessiner = function () { if (etat.d) dessiner(c, etat.d, etat.fiab, etat.cad); };
     App.etat.redessiner = redessiner;
     App.donnees('tableauDeBord').then(function (r) {
       if (App.etat.ecran !== 'dashboard') return;
       if (!r.ok) { App.erreur(c, r); return; }
       etat.d = r.data; redessiner();
+      App.donnees('cadencage').then(function (k) {
+        if (App.etat.ecran !== 'dashboard') return;
+        etat.cad = k.ok ? k.data : null; redessiner();
+      });
       App.donnees('essaiPonderation').then(function (f) {
         if (App.etat.ecran !== 'dashboard') return;
         etat.fiab = f.ok ? f.data : null; redessiner();

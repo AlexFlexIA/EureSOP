@@ -248,12 +248,17 @@
     }
 
     function exporter() {
-      var ref = etat.d.anneeReference || 'N-1';
-      var lignes = [['Code', 'Libellé', 'Entité', 'Réalisé ' + ref, 'Statistique', 'Événements', 'Corrections', 'Substitutions', 'Retenue', 'Unité']];
-      articlesVisibles().forEach(function (a) {
-        lignes.push([a.code, a.libelle, a.entite].concat(['n1', 'statistique', 'evenements', 'correction', 'substitution', 'retenue'].map(function (k) { return Math.round(App.valArt(a, k) * 100) / 100; })).concat([App.UNITES[App.etat.unite].lbl]));
+      App.appel('exportPrevision', []).then(function (r) {
+        if (!r.ok) { App.toast(r.message); return; }
+        var d = r.data, ref = d.anneeReference || 'N-1', q = etat.q.toLowerCase();
+        var lignes = [['Code', 'Libellé', 'Entité', 'Réalisé ' + ref, 'Statistique', 'Événements', 'Corrections', 'Substitutions', 'Retenue', 'Unité']];
+        d.articles.filter(function (a) {
+          return (!App.etat.entite || a.entite === App.etat.entite) && (!q || a.code.toLowerCase().indexOf(q) >= 0 || a.libelle.toLowerCase().indexOf(q) >= 0);
+        }).forEach(function (a) {
+          lignes.push([a.code, a.libelle, a.entite].concat(['n1', 'statistique', 'evenements', 'correction', 'substitution', 'retenue'].map(function (k) { return Math.round(App.valArt(a, k) * 100) / 100; })).concat([App.UNITES[App.etat.unite].lbl]));
+        });
+        App.telecharger('prevision-' + App.etat.session.campagne.id + '.csv', lignes);
       });
-      App.telecharger('prevision-' + App.etat.session.campagne.id + '.csv', lignes);
     }
 
     function $v(sel) { var e = document.querySelector('#dlg ' + sel); return e ? e.value.trim() : ''; }

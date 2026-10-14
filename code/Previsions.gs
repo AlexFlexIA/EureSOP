@@ -100,6 +100,46 @@ var Previsions = (function () {
     return { anneeTestee: cible, anneesBase: avant, nbArticles: articles.length, meilleur: meilleur, resultats: resultats };
   }
 
+  // Fiabilité réelle : prévision de la campagne (validée, sinon arbitrée, sinon statistique) comparée aux ventes réelles de
+  // l'année prévue, dès que l'historique la contient. Erreur = somme des écarts absolus / ventes ; biais = prévu / réel - 1.
+  function fiabiliteReelle(acteur) {
+    Auth.requireCap(acteur, 'consultation');
+    if (!Auth.inScope(acteur, 'consultation', {})) return { disponible: false, raison: 'La mesure porte sur tous les articles : elle demande un périmètre global.' };
+    var annee = Number(acteur.campagne['Annee prevision']) ? String(Number(acteur.campagne['Annee prevision'])) : '';
+    if (!annee) return { disponible: false, raison: 'La campagne n\'a pas d\'année de prévision (colonne Annee prevision de CAMPAGNES).' };
+    var ctx = Versions.contexte(acteur);
+    var version = Versions.lignesCampagne(ctx).filter(function (r) { return norm(r.Scenario) === 'BASE' && norm(r.Statut) === 'COURANTE'; })[0];
+    var rows = Store.read(ctx.idSortie, 'PREVISION').rows;
+    if (!version || !rows.length) return { disponible: false, raison: 'Aucune prévision à comparer.' };
+    var h = Histo.agreger(acteur, true, true);
+    if (h.annees.indexOf(annee) < 0) return { disponible: false, raison: 'L\'historique ne contient pas encore ' + annee + ' : la fiabilité réelle se mesure quand les ventes de la campagne sont arrivées (nouvel onglet « Données ' + annee + ' »).' };
+    var num = function (v) { var n = Number(v); return isFinite(n) && txt(v) !== '' ? n : 0; };
+    var cles = {};
+    rows.forEach(function (r) {
+      var prevu = txt(r['Qte validee']) !== '' ? num(r['Qte validee']) : (txt(r['Qte arbitree']) !== '' ? num(r['Qte arbitree']) : num(r['Qte statistique']));
+      cles[norm(r.Entite) + '|' + txt(r['Code produit'])] = { entite: txt(r.Entite), prevu: prevu, reel: 0 };
+    });
+    h.articles.forEach(function (a) {
+      var k = norm(a.entite) + '|' + a.code;
+      var reel = a.parAnnee[annee] ? a.parAnnee[annee].qte : 0;
+      if (!cles[k]) cles[k] = { entite: a.entite, prevu: 0, reel: 0 };
+      cles[k].reel = reel;
+    });
+    var parEntite = {};
+    var cumul = function (o, x) { o.ecart += Math.abs(x.prevu - x.reel); o.prevu += x.prevu; o.reel += x.reel; o.nb++; };
+    var global = { ecart: 0, prevu: 0, reel: 0, nb: 0 };
+    Object.keys(cles).forEach(function (k) {
+      var x = cles[k];
+      cumul(global, x);
+      cumul(parEntite[x.entite] = parEntite[x.entite] || { entite: x.entite, ecart: 0, prevu: 0, reel: 0, nb: 0 }, x);
+    });
+    var fin = function (o) { return { entite: o.entite, nb: o.nb, prevu: o.prevu, reel: o.reel, erreur: o.reel > 0 ? o.ecart / o.reel : 0, biais: o.reel > 0 ? o.prevu / o.reel - 1 : 0 }; };
+    return {
+      disponible: true, annee: annee, version: { id: txt(version['ID version']), type: norm(version.Type) },
+      global: fin(global), parEntite: Object.keys(parEntite).map(function (k) { return fin(parEntite[k]); })
+    };
+  }
+
   function idLigne(idCampagne, entite, code) {
     return JSON.stringify([idCampagne, entite, code, PLATEFORME_NON_AFFECTEE]);
   }
@@ -291,5 +331,5 @@ var Previsions = (function () {
     return d;
   }
 
-  return { calculer: calculer, arbitrer: arbitrer, reprevision: reprevision, chargerCourante: chargerCourante, essai: essai, courante: courante, statistique: statistique, ponderations: ponderations };
+  return { calculer: calculer, arbitrer: arbitrer, fiabiliteReelle: fiabiliteReelle, reprevision: reprevision, chargerCourante: chargerCourante, essai: essai, courante: courante, statistique: statistique, ponderations: ponderations };
 })();

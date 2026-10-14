@@ -90,8 +90,8 @@ PARAM = {
    ("Mois rattache", T, "AAAA-MM, règle REGLAGES / RATTACHEMENT_SEMAINE"), ("Annee", E, ""),
    ("Type campagne", T, "PAC1 à PAC4 ou MORTE_SAISON")]),
  "COEFFICIENTS": ("Cadençage : répartition du besoin annuel sur les semaines. Les mois du comité s'obtiennent en additionnant les semaines.", [
-   ("ID campagne", T, ""), ("Niveau", "LISTE", "MARCHE | FAMILLE | ARTICLE | PLATEFORME"),
-   ("Cle niveau", T, "Valeur du niveau, ex. marché ENGRAIS"), ("Plateforme", T, "* = toutes"),
+   ("ID campagne", T, ""), ("Niveau", "LISTE", "GLOBAL | MARCHE | FAMILLE | ARTICLE | PLATEFORME"),
+   ("Cle niveau", T, "Valeur du niveau, ex. code produit pour ARTICLE. * pour GLOBAL"), ("Plateforme", T, "* = toutes"),
    ("Semaine", E, "Numéro de semaine ISO, 1 à 53"),
    ("Coefficient", D, "En % du besoin annuel. Somme = 100 par ensemble Niveau, Cle niveau, Plateforme"),
    ("Origine", "LISTE", "HISTORIQUE | BUDGET | MANUEL"),
@@ -287,5 +287,6 @@ if __name__ == "__main__":
         "// Généré par outils/structure.py. Ne pas modifier à la main.\n"
         "var SOP_STRUCTURE_VERSION = \"" + STRUCTURE_VERSION + "\";\n"
         "var SOP_STRUCTURE = " + json.dumps(cols, ensure_ascii=False, indent=1) + ";\n"
-        "var SOP_TYPES = " + json.dumps(types, ensure_ascii=False) + ";\n", encoding="utf-8")
+        "var SOP_TYPES = " + json.dumps(types, ensure_ascii=False) + ";\n"
+        "var SOP_REGLES = " + json.dumps({t: [c[2] for c in v[1]] for t, v in SORTIE.items() if t.startswith("PUBLICATION_")}, ensure_ascii=False) + ";\n", encoding="utf-8")
     print(sum(len(t) for _, t in FILES), "onglets")

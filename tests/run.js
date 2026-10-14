@@ -1068,6 +1068,273 @@ test('historique corrigé : la liste des saisies expose les corrections d\'histo
   assert.strictEqual(l[0].annee, '2025');
 });
 
+// ---------- Validation, comparaison, fiabilité réelle, journal ----------
+const reprev = (env, corr, op) => appel(env, 'reprevision', [{ corrections: corr, motif: 'm' }, op]);
+
+test('validation : version VALIDEE verrouillée, quantités validées et photo écrites', () => {
+  const env = envPrev(); env.moi('admin@eureden.com');
+  reprev(env, [{ entite: 'Coop EUREDEN', code: DAP, quantite: -1000 }], 'rp1');
+  const r = appel(env, 'validerVersion', [{ commentaire: 'Comité du 12/10' }, 'v1']);
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(r.data.resultat.idVersion, 'V002');
+  const v = env.lignes('SORTIE1', 'VERSIONS');
+  assert.deepStrictEqual(v.map((x) => x.Type + ':' + x.Statut), ['ARBITREE:ARCHIVEE', 'VALIDEE:COURANTE']);
+  assert.strictEqual(v[1].Verrouillee, 'OUI');
+  const d = prevLigne(env, DAP);
+  assert.strictEqual(d.Statut, 'VALIDEE');
+  assert.strictEqual(d['Qte validee'], STAT_DAP - 1000);
+  assert.strictEqual(d.Version, 'V002');
+  assert.strictEqual(d['Qte correction'], -1000);
+  assert.strictEqual(typeof d['Code produit'], 'string');
+  assert.strictEqual(env.lignes('SORTIE1', 'INSTANTANES').filter((x) => x['ID version'] === 'V002').length, 2);
+  assert.ok(env.lignes('SORTIE1', 'JOURNAL').some((j) => j.Action === 'VERSION_VALIDEE' && j['Ancienne valeur'] === 'V001'));
+});
+test('validation : refusée pour une version statistique, déjà validée, sans droit', () => {
+  const env = envPrev(); env.moi('admin@eureden.com');
+  env.run("apiCalculerStatistique({}, 'op0')");
+  assert.strictEqual(appel(env, 'validerVersion', [{}, 'v1']).code, 'VERSION_NON_ARBITREE');
+  reprev(env, [], 'rp1');
+  assert.strictEqual(appel(env, 'validerVersion', [{}, 'v2']).ok, true);
+  assert.strictEqual(appel(env, 'validerVersion', [{}, 'v3']).code, 'VERSION_DEJA_VERROUILLEE');
+  env.moi('guillaume@eureden.com');
+  const env2 = envPrev(); env2.moi('guillaume@eureden.com');
+  reprev(env2, [], 'rp1');
+  assert.strictEqual(appel(env2, 'validerVersion', [{}, 'v1']).code, 'CAPACITE_REFUSEE');
+});
+test('validation : sans version, refusée ; après validation plus de recalcul ni de reprévision', () => {
+  const env = envPrev(); env.moi('admin@eureden.com');
+  assert.strictEqual(appel(env, 'validerVersion', [{}, 'v0']).code, 'VERSION_INCONNUE');
+  reprev(env, [], 'rp1');
+  appel(env, 'validerVersion', [{}, 'v1']);
+  assert.strictEqual(env.run("apiCalculerStatistique({}, 'x1')").code, 'VERSION_VERROUILLEE');
+  assert.strictEqual(reprev(env, [{ entite: 'Coop EUREDEN', code: DAP, quantite: 5 }], 'x2').code, 'VERSION_VERROUILLEE');
+});
+test('validation : opération rejouée sans doublon', () => {
+  const env = envPrev(); env.moi('admin@eureden.com');
+  reprev(env, [], 'rp1');
+  appel(env, 'validerVersion', [{}, 'v1']);
+  const r = appel(env, 'validerVersion', [{}, 'v1']);
+  assert.strictEqual(r.data.rejoue, true);
+  assert.strictEqual(env.lignes('SORTIE1', 'VERSIONS').length, 2);
+});
+test('comparaison de versions : écarts par article et totaux', () => {
+  const env = envPrev(); env.moi('guillaume@eureden.com');
+  env.run("apiCalculerStatistique({}, 'op0')");
+  reprev(env, [{ entite: 'Coop EUREDEN', code: DAP, quantite: -1000 }], 'rp1');
+  const r = appel(env, 'comparerVersions', ['V001', 'V002']);
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(r.data.totaux.delta, -1000);
+  assert.strictEqual(r.data.nbModifiees, 1);
+  assert.strictEqual(r.data.lignes[0].code, DAP);
+  assert.strictEqual(r.data.lignes[0].delta, -1000);
+  assert.strictEqual(r.data.lignes[0].libelle, 'D.A.P. 35K');
+  assert.strictEqual(appel(env, 'comparerVersions', ['V001', 'V009']).code, 'VERSION_INCONNUE');
+});
+test('journal : lu par la configuration et l\'arbitrage, plus récent d\'abord, refusé aux autres', () => {
+  const env = envPrev(); env.moi('guillaume@eureden.com');
+  env.run("apiCalculerStatistique({}, 'op0')");
+  reprev(env, [{ entite: 'Coop EUREDEN', code: DAP, quantite: -1 }], 'rp1');
+  const j = appel(env, 'journal', [50]).data;
+  assert.ok(j.length >= 4);
+  assert.ok(j[0].le >= j[j.length - 1].le);
+  assert.ok(j.some((x) => x.action === 'PREVISION_ARBITREE'));
+  const env2 = envPrev(); env2.moi('tc.ok@eureden.com');
+  assert.strictEqual(appel(env2, 'journal', [50]).code, 'CAPACITE_REFUSEE');
+});
+test('fiabilité réelle : indisponible sans année de prévision ou sans ventes de cette année', () => {
+  const env = envPrev(); env.moi('guillaume@eureden.com');
+  const a = appel(env, 'fiabiliteReelle').data;
+  assert.strictEqual(a.disponible, false);
+  assert.ok(/année de prévision/.test(a.raison));
+  const env2 = envPrev(); env2.moi('guillaume@eureden.com');
+  env2.feuille('PARAM_FICHIER_TEST_00001', 'CAMPAGNES')._data[1][3] = 2027;
+  env2.run("apiCalculerStatistique({}, 'op0')");
+  const b = appel(env2, 'fiabiliteReelle').data;
+  assert.strictEqual(b.disponible, false);
+  assert.ok(/2027/.test(b.raison));
+});
+test('fiabilité réelle : erreur et biais calculés contre les ventes brutes de l\'année prévue', () => {
+  const env = envPrev(); env.moi('guillaume@eureden.com');
+  env.feuille('PARAM_FICHIER_TEST_00001', 'CAMPAGNES')._data[1][3] = 2025;
+  env.run("apiCalculerStatistique({}, 'op0')");
+  const r = appel(env, 'fiabiliteReelle').data;
+  assert.strictEqual(r.disponible, true);
+  assert.strictEqual(r.annee, '2025');
+  const attendu = Math.abs(16345.188 - 16900) / 16950;
+  assert.ok(Math.abs(r.global.erreur - attendu) < 1e-6);
+  assert.ok(Math.abs(r.global.biais - ((16345.188 + 50) / 16950 - 1)) < 1e-6);
+  assert.strictEqual(r.parEntite.length, 2);
+});
+
+// ---------- Cadençage et publication ----------
+const envCad = () => { const env = envPrev(); env.feuille('PARAM_FICHIER_TEST_00001', 'CAMPAGNES')._data[1][3] = 2027; return env; };
+const sauverCoef = (env, o, op) => appel(env, 'sauverCoefficients', [Object.assign({ niveau: 'GLOBAL', coefficients: { 5: 25, 6: 25, 7: 25, 8: 25 } }, o), op || ('k' + Math.random())]);
+const coefLignes = (env) => env.lignes('PARAM_FICHIER_TEST_00001', 'COEFFICIENTS');
+
+test('calendrier ISO : semaines par année et rattachement au mois du jeudi', () => {
+  const env = creerEnvStandard();
+  assert.strictEqual(env.run('Cadencage.nbSemaines(2026)'), 53);
+  assert.strictEqual(env.run('Cadencage.nbSemaines(2027)'), 52);
+  assert.strictEqual(env.run('Cadencage.nbSemaines(2020)'), 53);
+  assert.strictEqual(env.run('Cadencage.mois(2027, 5)'), '2027-02');
+  assert.strictEqual(env.run('Cadencage.mois(2027, 9)'), '2027-03');
+  assert.strictEqual(env.run('Cadencage.mois(2027, 13)'), '2027-04');
+  assert.strictEqual(env.run('Cadencage.mois(2026, 1)'), '2026-01');
+  assert.strictEqual(env.run('Cadencage.mois(2025, 1)'), '2025-01');
+  assert.strictEqual(env.run('Cadencage.mois(2026, 53)'), '2026-12');
+  assert.strictEqual(env.run('Cadencage.etiquette(2027, 5)'), '2027-S05');
+});
+test('répartition : parts exactes, arrondis repris sur la première des plus grosses semaines', () => {
+  const env = creerEnvStandard();
+  const r = env.run('Cadencage.repartir(100, { semaines: { 5: 1, 6: 1, 7: 1 } })');
+  assert.deepStrictEqual(r.map((x) => x.qte), [33.334, 33.333, 33.333]);
+  assert.strictEqual(Math.round(r.reduce((s, x) => s + x.qte, 0) * 1000) / 1000, 100);
+  const q = env.run('Cadencage.repartir(1000, { semaines: { 5: 10, 6: 30, 7: 60 } })');
+  assert.deepStrictEqual(q.map((x) => x.qte), [100, 300, 600]);
+});
+test('coefficients : enregistrement, version, remplacement des lignes du même jeu', () => {
+  const env = envCad(); env.moi('guillaume@eureden.com');
+  const r = sauverCoef(env, {}, 'k1');
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(r.data.resultat.version, 1);
+  let l = coefLignes(env);
+  assert.strictEqual(l.length, 4);
+  assert.ok(l.every((x) => x['ID campagne'] === 'SOP_2027_PAC2' && x.Niveau === 'GLOBAL' && x['Cle niveau'] === '*' && x.Validation === 'A_VALIDER' && x.Origine === 'MANUEL'));
+  const r2 = sauverCoef(env, { coefficients: { 6: 50, 7: 50 } }, 'k2');
+  assert.strictEqual(r2.data.resultat.version, 2);
+  l = coefLignes(env);
+  assert.deepStrictEqual(l.map((x) => x.Semaine), [6, 7]);
+  assert.ok(env.lignes('SORTIE1', 'JOURNAL').some((j) => j.Action === 'COEFFICIENTS_MODIFIES'));
+});
+test('coefficients : un autre jeu et les autres campagnes ne sont pas touchés', () => {
+  const env = envCad(); env.moi('guillaume@eureden.com');
+  env.semer('PARAM_FICHIER_TEST_00001', 'COEFFICIENTS', [{ 'ID campagne': 'AUTRE', Niveau: 'GLOBAL', 'Cle niveau': '*', Semaine: 10, Coefficient: 100, Validation: 'VALIDE' }]);
+  sauverCoef(env, {}, 'k1');
+  sauverCoef(env, { niveau: 'ARTICLE', cle: DAP, coefficients: { 8: 100 } }, 'k2');
+  sauverCoef(env, { coefficients: { 9: 100 } }, 'k3');
+  const l = coefLignes(env);
+  assert.strictEqual(l.filter((x) => x['ID campagne'] === 'AUTRE').length, 1);
+  assert.strictEqual(l.filter((x) => x.Niveau === 'ARTICLE').length, 1);
+  assert.deepStrictEqual(l.filter((x) => x.Niveau === 'GLOBAL' && x['ID campagne'] === 'SOP_2027_PAC2').map((x) => x.Semaine), [9]);
+});
+test('coefficients : somme, semaine, valeur, niveau, code et année contrôlés', () => {
+  const env = envCad(); env.moi('guillaume@eureden.com');
+  const code = (o) => sauverCoef(env, o).code;
+  assert.strictEqual(code({ coefficients: { 5: 50, 6: 40 } }), 'SOMME_INVALIDE');
+  assert.strictEqual(code({ coefficients: { 5: 50, 53: 50 } }), 'SEMAINE_INVALIDE');
+  assert.strictEqual(code({ coefficients: { 5: 150, 6: -50 } }), 'COEFFICIENT_INVALIDE');
+  assert.strictEqual(code({ coefficients: { x: 100 } }), 'SEMAINE_INVALIDE');
+  assert.strictEqual(code({ coefficients: {} }), 'COEFFICIENT_INVALIDE');
+  assert.strictEqual(code({ niveau: 'MARCHE' }), 'NIVEAU_INVALIDE');
+  assert.strictEqual(code({ niveau: 'ARTICLE', cle: '' }), 'CODE_OBLIGATOIRE');
+  assert.strictEqual(coefLignes(env).length, 0);
+  const sans = envPrev(); sans.moi('guillaume@eureden.com');
+  assert.strictEqual(sauverCoef(sans).code, 'ANNEE_PREVISION_ABSENTE');
+  const ok = envCad(); ok.moi('guillaume@eureden.com');
+  assert.strictEqual(sauverCoef(ok, { coefficients: { 5: '33,33', 6: '33,33', 7: '33,34' } }).ok, true);
+});
+test('coefficients : droits, campagne gelée, opération rejouée, suppression et validation', () => {
+  const env = envCad(); env.moi('rm.engrais@eureden.com');
+  assert.strictEqual(sauverCoef(env).code, 'CAPACITE_REFUSEE');
+  const env2 = envCad(); env2.moi('guillaume@eureden.com');
+  sauverCoef(env2, {}, 'k1');
+  assert.strictEqual(sauverCoef(env2, {}, 'k1').data.rejoue, true);
+  assert.strictEqual(coefLignes(env2).length, 4);
+  sauverCoef(env2, { niveau: 'ARTICLE', cle: DAP, coefficients: { 8: 100 } }, 'k2');
+  assert.strictEqual(appel(env2, 'supprimerCoefficients', ['GLOBAL', '*', 's0']).code, 'NIVEAU_INVALIDE');
+  assert.strictEqual(appel(env2, 'supprimerCoefficients', ['ARTICLE', '0000000', 's1']).code, 'CADENCAGE_INCONNU');
+  assert.strictEqual(appel(env2, 'supprimerCoefficients', ['ARTICLE', DAP, 's2']).ok, true);
+  assert.strictEqual(coefLignes(env2).filter((x) => x.Niveau === 'ARTICLE').length, 0);
+  assert.strictEqual(appel(env2, 'validerCoefficients', ['GLOBAL', '*', 'v1']).code, 'CAPACITE_REFUSEE');
+  const env3 = envCad(); env3.moi('admin@eureden.com');
+  sauverCoef(env3, {}, 'k1');
+  assert.strictEqual(appel(env3, 'validerCoefficients', ['GLOBAL', '*', 'v1']).ok, true);
+  assert.ok(coefLignes(env3).every((x) => x.Validation === 'VALIDE' && x['Valide par'] === 'admin@eureden.com'));
+  const env4 = envCad(); env4.moi('guillaume@eureden.com');
+  env4.feuille('PARAM_FICHIER_TEST_00001', 'CAMPAGNES')._data[1][10] = 'GELEE';
+  assert.strictEqual(sauverCoef(env4).code, 'CAMPAGNE_FERMEE');
+});
+test('cadençage : répartition de la quantité retenue par semaine et par mois', () => {
+  const env = envCad(); env.moi('guillaume@eureden.com');
+  reprev(env, [], 'rp1');
+  sauverCoef(env, { coefficients: { 5: 10, 9: 30, 13: 60 } }, 'k1');
+  const d = appel(env, 'cadencage').data;
+  assert.strictEqual(d.annee, 2027);
+  assert.deepStrictEqual(d.semaines.map((x) => x.etiquette), ['2027-S05', '2027-S09', '2027-S13']);
+  assert.deepStrictEqual(d.mois.map((x) => x.mois), ['2027-02', '2027-03', '2027-04']);
+  const total = d.semaines.reduce((s, x) => s + x.parEntite['Coop EUREDEN'].q, 0);
+  assert.ok(Math.abs(total - STAT_DAP) < 1e-6);
+  assert.ok(Math.abs(d.mois[2].parEntite['Coop EUREDEN'].q - STAT_DAP * 0.6) < 1e-6);
+  assert.strictEqual(d.nonCadences, 0);
+  assert.strictEqual(d.jeux.length, 1);
+});
+test('cadençage : le jeu d\'un article prime sur le global, les articles sans jeu sont comptés', () => {
+  const env = envCad(); env.moi('guillaume@eureden.com');
+  reprev(env, [], 'rp1');
+  sauverCoef(env, { niveau: 'ARTICLE', cle: DAP, coefficients: { 5: 100 } }, 'k1');
+  let d = appel(env, 'cadencage').data;
+  assert.strictEqual(d.nonCadences, 1);
+  assert.deepStrictEqual(d.semaines.map((x) => x.etiquette), ['2027-S05']);
+  sauverCoef(env, { coefficients: { 9: 100 } }, 'k2');
+  d = appel(env, 'cadencage').data;
+  assert.strictEqual(d.nonCadences, 0);
+  assert.deepStrictEqual(d.semaines.map((x) => x.etiquette), ['2027-S05', '2027-S09']);
+  assert.ok(Math.abs(d.semaines[0].parEntite['Coop EUREDEN'].q - STAT_DAP) < 1e-6);
+  assert.ok(Math.abs(d.semaines[1].parEntite['NEGOCE ONA'].q - 50) < 1e-6);
+});
+test('cadençage : sans année ou sans jeu, réponse vide', () => {
+  const env = envPrev(); env.moi('guillaume@eureden.com');
+  const d = appel(env, 'cadencage').data;
+  assert.deepStrictEqual(d.semaines, []);
+  assert.strictEqual(d.annee, 0);
+});
+test('publication : la validation écrit les onglets mensuel et hebdomadaire et le contrat', () => {
+  const env = envCad(); env.moi('admin@eureden.com');
+  sauverCoef(env, { coefficients: { 5: 10, 9: 30, 13: 60 } }, 'k1');
+  reprev(env, [{ entite: 'Coop EUREDEN', code: DAP, quantite: -1000 }], 'rp1');
+  const r = appel(env, 'validerVersion', [{}, 'v1']);
+  assert.strictEqual(r.data.resultat.publication.ecrit, true);
+  const h = env.lignes('SORTIE1', 'PUBLICATION_HEBDO'), m = env.lignes('SORTIE1', 'PUBLICATION_MENSUELLE');
+  assert.strictEqual(h.length, 6);
+  assert.strictEqual(m.length, 6);
+  const dapH = h.filter((x) => x['Code produit'] === DAP);
+  assert.deepStrictEqual(dapH.map((x) => x.Semaine), ['2027-S05', '2027-S09', '2027-S13']);
+  assert.ok(Math.abs(dapH.reduce((s, x) => s + x['Quantite demande'], 0) - (STAT_DAP - 1000)) < 1e-9);
+  assert.ok(dapH.every((x) => x['ID version'] === 'V002' && x['Version contrat'] === '1.0' && x['ID campagne'] === 'SOP_2027_PAC2' && x.Scenario === 'BASE' && x['Quantite reelle'] === x['Quantite demande']));
+  const dapM = m.filter((x) => x['Code produit'] === DAP);
+  assert.deepStrictEqual(dapM.map((x) => x.Mois), ['2027-02', '2027-03', '2027-04']);
+  assert.ok(Math.abs(dapM[2]['Quantite demande'] - (STAT_DAP - 1000) * 0.6) < 0.002);
+  const contrat = env.lignes('SORTIE1', 'CONTRAT');
+  assert.ok(contrat.length > 20);
+  assert.ok(contrat.every((x) => x['Version contrat'] === '1.0'));
+  assert.ok(contrat.some((x) => x.Onglet === 'PUBLICATION_MENSUELLE' && x.Colonne === 'Mois' && x.Description === 'AAAA-MM'));
+  assert.ok(env.lignes('SORTIE1', 'JOURNAL').some((j) => j.Action === 'PUBLICATION_ECRITE'));
+});
+test('publication : sans cadençage la validation réussit mais rien n\'est publié, puis republication', () => {
+  const env = envCad(); env.moi('admin@eureden.com');
+  reprev(env, [], 'rp1');
+  const r = appel(env, 'validerVersion', [{}, 'v1']);
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(r.data.resultat.publication.ecrit, false);
+  assert.ok(/Aucun cadençage/.test(r.data.resultat.publication.raison));
+  assert.strictEqual(env.lignes('SORTIE1', 'PUBLICATION_HEBDO').length, 0);
+  sauverCoef(env, { coefficients: { 5: 50, 6: 50 } }, 'k1');
+  const p = appel(env, 'republier', ['p1']);
+  assert.strictEqual(p.data.resultat.ecrit, true);
+  assert.strictEqual(env.lignes('SORTIE1', 'PUBLICATION_HEBDO').length, 4);
+  appel(env, 'republier', ['p2']);
+  assert.strictEqual(env.lignes('SORTIE1', 'PUBLICATION_HEBDO').length, 4);
+  assert.strictEqual(env.lignes('SORTIE1', 'PUBLICATION_MENSUELLE').length, 2);
+});
+test('publication : republier demande une version validée et le droit de validation', () => {
+  const env = envCad(); env.moi('admin@eureden.com');
+  assert.strictEqual(appel(env, 'republier', ['p0']).code, 'VERSION_NON_VALIDEE');
+  reprev(env, [], 'rp1');
+  assert.strictEqual(appel(env, 'republier', ['p1']).code, 'VERSION_NON_VALIDEE');
+  const env2 = envCad(); env2.moi('guillaume@eureden.com');
+  assert.strictEqual(appel(env2, 'republier', ['p2']).code, 'CAPACITE_REFUSEE');
+});
+
 let echecs = 0;
 tests.forEach(({ nom, fn }) => {
   try { fn(); console.log('  ok   ' + nom); } catch (e) { echecs++; console.log('  ECHEC ' + nom + '\n        ' + (e.message || e).split('\n')[0]); }

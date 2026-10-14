@@ -427,8 +427,8 @@ Cadençage : répartition du besoin annuel sur les semaines. Les mois du comité
 | Colonne | Type | Règle ou exemple |
 |---|---|---|
 | ID campagne | TEXTE |  |
-| Niveau | LISTE | MARCHE | FAMILLE | ARTICLE | PLATEFORME |
-| Cle niveau | TEXTE | Valeur du niveau, ex. marché ENGRAIS |
+| Niveau | LISTE | GLOBAL | MARCHE | FAMILLE | ARTICLE | PLATEFORME |
+| Cle niveau | TEXTE | Valeur du niveau, ex. code produit pour ARTICLE. * pour GLOBAL |
 | Plateforme | TEXTE | * = toutes |
 | Semaine | ENTIER | Numéro de semaine ISO, 1 à 53 |
 | Coefficient | DECIMAL | En % du besoin annuel. Somme = 100 par ensemble Niveau, Cle niveau, Plateforme |

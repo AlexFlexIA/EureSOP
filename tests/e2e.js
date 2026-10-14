@@ -21,7 +21,8 @@ function page() {
 
 (async () => {
   const env = envPrev();
-  env.moi('guillaume@eureden.com');
+  env.feuille('PARAM_FICHIER_TEST_00001', 'CAMPAGNES')._data[1][3] = 2027;
+  env.moi('admin@eureden.com');
   const erreurs = [];
   const nav = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || '/opt/pw-browsers/chromium', args: ['--no-sandbox'] });
   const p = await nav.newPage({ viewport: { width: 1280, height: 900 } });
@@ -48,8 +49,8 @@ function page() {
       await p.waitForSelector('#menu button');
       assert.ok((await texte('#camp')).includes('PAC 2 2027'));
       assert.deepStrictEqual(await p.$$eval('#ent option', (o) => o.map((x) => x.textContent)), ['Coop EUREDEN + NEGOCE ONA', 'Coop EUREDEN', 'NEGOCE ONA']);
-      assert.ok((await texte('#entete-utilisateur')).includes('guillaume@eureden.com'));
-      assert.strictEqual(await p.$$eval('#menu button', (b) => b.length), 6 + 1); // 6 écrans + sources (contrôles réservés à la configuration)
+      assert.ok((await texte('#entete-utilisateur')).includes('admin@eureden.com'));
+      assert.strictEqual(await p.$$eval('#menu button', (b) => b.length), 6 + 2); // 6 écrans + sources + contrôles (réservé à la configuration)
     });
     await etape('tableau de bord sans prévision : alerte et source non connectée', async () => {
       await p.waitForSelector('.kpi');
@@ -94,6 +95,7 @@ function page() {
       await p.click('#menu [data-v=dashboard]');
       await p.waitForSelector('.kpi');
       await p.waitForFunction(() => /Erreur \d+ %|Il faut deux/.test(document.body.innerText));
+      await p.waitForSelector('main :text("Prévision mensuelle")', { timeout: 3000 }).catch(() => {}); // seulement si un cadençage existe
       const quantite = await texte('main');
       assert.ok(/prévision retenue/i.test(quantite));
       await p.click('#unites [data-u=E]');
@@ -152,12 +154,77 @@ function page() {
       const ona = env.lignes('SORTIE1', 'PREVISION').filter((x) => x['Code produit'] === '2200001')[0];
       assert.strictEqual(ona['Qte arbitree'], 0);
     });
+    await etape('cadençage : répartition uniforme sur S05 à S13, enregistrement, résultat par mois', async () => {
+      await p.click('#menu [data-v=cadencage]');
+      await p.waitForSelector('#k-unif');
+      await p.fill('#k-de', '5'); await p.dispatchEvent('#k-de', 'change');
+      await p.fill('#k-a', '13'); await p.dispatchEvent('#k-a', 'change');
+      await p.click('#k-unif');
+      await p.waitForSelector('input[data-sem="9"]');
+      assert.ok(/Total 100 %/.test(await texte('#k-somme')));
+      await p.click('#k-save');
+      await p.waitForFunction(() => /version 1/.test(document.body.innerText));
+      assert.strictEqual(env.lignes('PARAM_FICHIER_TEST_00001', 'COEFFICIENTS').length, 9);
+      const m = await texte('main');
+      assert.ok(/févr\. 2027/.test(m) && /mars 2027/.test(m) && /avr\. 2027/.test(m));
+    });
+    await etape('cadençage : un coefficient hors total est refusé par le serveur', async () => {
+      await p.fill('input[data-sem="9"]', '50'); await p.dispatchEvent('input[data-sem="9"]', 'change');
+      assert.ok(/doit faire 100/.test(await texte('#k-somme')));
+      await p.click('#k-save');
+      await p.waitForFunction(() => /doit faire 100 %/.test(document.querySelector('#k-msg').innerText));
+      await p.click('#menu [data-v=prevision]');
+      await p.click('#menu [data-v=cadencage]');
+      await p.waitForSelector('input[data-sem="9"]');
+      assert.strictEqual(await p.inputValue('input[data-sem="9"]'), '11.11');
+    });
+    await etape('tableau de bord : graphique mensuel dès que le cadençage existe', async () => {
+      await p.click('#menu [data-v=dashboard]');
+      await p.waitForSelector('main :text("Prévision mensuelle")');
+      assert.ok(/févr\. 2027/.test(await texte('main')));
+    });
     await etape('versions : liste et fiabilité de la méthode', async () => {
       await p.click('#menu [data-v=versions]');
       await p.waitForSelector('.vt li');
       assert.strictEqual(await p.$$eval('.vt li', (l) => l.length), 3);
       await p.click('#v-essai');
       await p.waitForSelector('table:has-text("Erreur")');
+    });
+    await etape('versions : comparaison, export, validation par le comité', async () => {
+      await p.click('#menu [data-v=versions]');
+      await p.waitForSelector('#c-go');
+      await p.selectOption('#c-a', 'V001');
+      await p.selectOption('#c-b', 'V003');
+      await p.click('#c-go');
+      await p.waitForSelector('#x-cmp:not([disabled])');
+      assert.ok(/article\(s\) modifié/.test(await texte('main')));
+      const [dl] = await Promise.all([p.waitForEvent('download'), p.click('#x-prev')]);
+      assert.ok(/^prevision-SOP_2027_PAC2-V003\.csv$/.test(dl.suggestedFilename()), dl.suggestedFilename());
+      await p.click('[data-valider]');
+      await p.waitForSelector('#dlg[open]');
+      await p.fill('#d-com', 'Comité du 12/10');
+      await p.click('#dlg-ok');
+      await p.waitForSelector('#dlg:not([open])', { state: 'attached' });
+      await p.waitForFunction(() => /Validée/.test(document.body.innerText));
+      const v = env.lignes('SORTIE1', 'VERSIONS');
+      assert.strictEqual(v[v.length - 1].Type, 'VALIDEE');
+      assert.strictEqual(v[v.length - 1].Verrouillee, 'OUI');
+      assert.ok(env.lignes('SORTIE1', 'PUBLICATION_HEBDO').length > 0, 'la validation doit publier');
+      assert.ok(env.lignes('SORTIE1', 'PUBLICATION_MENSUELLE').some((x) => x.Mois === '2027-02'));
+      await p.waitForSelector('table:has-text("Version validée")');
+    });
+    await etape('prévision verrouillée après validation', async () => {
+      await p.click('#menu [data-v=prevision]');
+      await p.waitForSelector('#p-table table');
+      assert.strictEqual(await p.locator('#p-save').count(), 0);
+      assert.strictEqual(await p.locator('#p-stat').count(), 0);
+      assert.ok(await p.locator('#p-table input.cell').first().isDisabled());
+    });
+    await etape('contrôles de mise en service', async () => {
+      await p.click('#menu [data-v=controles]');
+      await p.click('#c-lancer');
+      await p.waitForSelector('#c-res table');
+      assert.ok(/Historique HISTO_EUREDEN/.test(await texte('#c-res')));
     });
     await etape('sources : état des fichiers', async () => {
       await p.click('#menu [data-v=sources]');

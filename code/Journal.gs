@@ -1,6 +1,15 @@
 // Trace des modifications (JOURNAL) et reçus d'opération (OPERATIONS) pour rejouer un appel sans doublon.
 
 var Journal = {
+  // Dernières entrées du journal, la plus récente d'abord. Réservé à la configuration et à l'arbitrage.
+  lire: function (acteur, limite) {
+    if (!acteur.caps.configuration && !acteur.caps.arbitrage) throw new AppError('CAPACITE_REFUSEE', 'Votre rôle ne permet pas de lire le journal.');
+    var rows = Store.read(Params.idSortie(acteur.campagne), 'JOURNAL').rows;
+    return rows.slice(-Math.max(1, Math.min(Number(limite) || 200, 1000))).reverse().map(function (r) {
+      return { le: txt(r.Horodatage), par: txt(r.Auteur), action: txt(r.Action), objet: txt(r.Objet), avant: txt(r['Ancienne valeur']), apres: txt(r['Nouvelle valeur']), motif: txt(r.Motif) };
+    });
+  },
+
   log: function (idSortie, acteur, action, objet, avant, apres, motif, idOperation) {
     Store.append(idSortie, 'JOURNAL', [{
       'Horodatage': maintenant(),
