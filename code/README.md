@@ -52,7 +52,7 @@ Si la page affiche `IDENTITE_INDISPONIBLE`, les politiques Workspace empêchent 
 
 ```
 python3 outils/structure.py   # régénère Structure.gs et les modèles si la structure change
-node tests/run.js             # 51 tests, aucune dépendance
+node tests/run.js             # 53 tests, aucune dépendance
 ```
 
 Les tests exécutent le vrai code Apps Script dans Node avec un double en mémoire de Google Sheets, construit à partir des en-têtes de `modeles/`. Ils ne couvrent ni les quotas de Google, ni les politiques du domaine, ni la lecture réelle de l'adresse du visiteur. Ces points se vérifient en recette, avec plusieurs comptes.

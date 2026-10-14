@@ -14,7 +14,8 @@ function exigerProprietaire_() {
 
 function definirParametres_(id) {
   exigerProprietaire_();
-  if (!txt(id) || id.indexOf('COLLER_ICI') === 0) throw new Error('Renseignez l\'ID du fichier PARAMETRES_SOP dans Setup.gs avant de lancer cette fonction.');
+  if (!txt(id) || txt(id).indexOf('COLLER_ICI') === 0) throw new Error('Renseignez l\'ID du fichier PARAMETRES_SOP dans Setup.gs avant de lancer cette fonction.');
+  if (!/^[A-Za-z0-9_-]{20,}$/.test(txt(id))) throw new Error('Ce n\'est pas un ID de fichier Google Sheets : copiez la partie de l\'URL entre /d/ et /edit.');
   PropertiesService.getScriptProperties().setProperty(SOP.PROP_PARAM_ID, txt(id));
   console.log('Fichier de paramètres enregistré : ' + txt(id));
 }
@@ -44,7 +45,16 @@ function installerDepuisEditeur() {
 // Étape 3 : lance les contrôles de mise en service et les affiche dans le journal d'exécution.
 function verifierInstallation() {
   exigerProprietaire_();
-  var resultats = Controles.run(Auth.resolve());
+  var resultats;
+  try {
+    resultats = Controles.run(Auth.resolve());
+  } catch (e) {
+    if (e && e.code) {
+      console.log('[' + e.code + '] ' + e.message);
+      throw new Error(e.message);
+    }
+    throw e;
+  }
   resultats.forEach(function (r) { console.log('[' + r.niveau + '] ' + r.sujet + ' : ' + r.detail); });
   return resultats.length;
 }

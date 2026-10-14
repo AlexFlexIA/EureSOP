@@ -4,7 +4,11 @@ var Params = (function () {
   function idFichier() {
     var id = PropertiesService.getScriptProperties().getProperty(SOP.PROP_PARAM_ID);
     if (!txt(id)) {
-      throw new AppError('PARAM_NON_CONFIGURE', 'Le fichier de paramètres n\'est pas configuré. Un administrateur doit lancer la configuration dans l\'éditeur Apps Script.');
+      throw new AppError('PARAM_NON_CONFIGURE', 'Le fichier de paramètres n\'est pas configuré. Un administrateur doit lancer la fonction configurerParametres dans l\'éditeur Apps Script.');
+    }
+    // Un vrai ID de Google Sheets fait au moins 20 caractères (lettres, chiffres, - et _).
+    if (!/^[A-Za-z0-9_-]{20,}$/.test(txt(id)) || txt(id).indexOf('COLLER_ICI') === 0) {
+      throw new AppError('PARAM_ID_INVALIDE', 'La propriété ' + SOP.PROP_PARAM_ID + ' contient « ' + txt(id).slice(0, 60) + ' », ce n\'est pas un ID de fichier Google Sheets. Collez le vrai ID dans configurerParametres (Setup.gs) puis relancez-la.');
     }
     return txt(id);
   }

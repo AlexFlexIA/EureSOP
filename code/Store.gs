@@ -8,7 +8,13 @@ var Store = (function () {
   function cle(id, tab) { return id + '|' + tab; }
 
   function sheet(id, tab) {
-    if (!books[id]) books[id] = SpreadsheetApp.openById(id);
+    if (!books[id]) {
+      try {
+        books[id] = SpreadsheetApp.openById(id);
+      } catch (e) {
+        throw new AppError('CLASSEUR_INACCESSIBLE', 'Impossible d\'ouvrir le classeur ' + id + '. Vérifiez l\'ID et que le compte qui déploie y a accès.');
+      }
+    }
     var sh = books[id].getSheetByName(tab);
     if (!sh) throw new AppError('ONGLET_ABSENT', 'Onglet ' + tab + ' absent du classeur.');
     return sh;

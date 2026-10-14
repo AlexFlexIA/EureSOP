@@ -82,12 +82,12 @@ test('périmètre : la capacité doit être portée par le rôle', () => {
 // ---------- Campagne ----------
 test('aucune campagne sélectionnée : CAMPAGNE_INVALIDE', () => {
   const env = creerEnvStandard(); env.moi('admin@eureden.com');
-  env.feuille('PARAM1', 'CAMPAGNES')._data[1][12] = 'NON';
+  env.feuille('PARAM_FICHIER_TEST_00001', 'CAMPAGNES')._data[1][12] = 'NON';
   assert.strictEqual(erreur(env, 'Auth.resolve()'), 'CAMPAGNE_INVALIDE');
 });
 test('deux campagnes sélectionnées : CAMPAGNE_INVALIDE', () => {
   const env = creerEnvStandard(); env.moi('admin@eureden.com');
-  env.semer('PARAM1', 'CAMPAGNES', [{ 'ID campagne': 'X', Statut: 'OUVERTE', Selectionnee: 'OUI' }]);
+  env.semer('PARAM_FICHIER_TEST_00001', 'CAMPAGNES', [{ 'ID campagne': 'X', Statut: 'OUVERTE', Selectionnee: 'OUI' }]);
   assert.strictEqual(erreur(env, 'Auth.resolve()'), 'CAMPAGNE_INVALIDE');
 });
 test('paramètres non configurés : PARAM_NON_CONFIGURE', () => {
@@ -96,12 +96,12 @@ test('paramètres non configurés : PARAM_NON_CONFIGURE', () => {
 });
 test('campagne gelée : écriture refusée', () => {
   const env = creerEnvStandard(); env.moi('guillaume@eureden.com');
-  env.feuille('PARAM1', 'CAMPAGNES')._data[1][10] = 'GELEE';
+  env.feuille('PARAM_FICHIER_TEST_00001', 'CAMPAGNES')._data[1][10] = 'GELEE';
   assert.strictEqual(erreur(env, "Versions.create(Auth.resolve(), {type: 'STATISTIQUE', libelle: 'x'}, 'op1')"), 'CAMPAGNE_FERMEE');
 });
 test('campagne en préparation : seule la configuration écrit', () => {
   const env = creerEnvStandard();
-  env.feuille('PARAM1', 'CAMPAGNES')._data[1][10] = 'PREPARATION';
+  env.feuille('PARAM_FICHIER_TEST_00001', 'CAMPAGNES')._data[1][10] = 'PREPARATION';
   env.moi('guillaume@eureden.com');
   assert.strictEqual(erreur(env, "Auth.requireWritable(Auth.resolve())"), 'CAMPAGNE_FERMEE');
   env.moi('admin@eureden.com');
@@ -229,7 +229,7 @@ test('onglet absent : ONGLET_ABSENT', () => {
 });
 test('les codes numériques lus par Sheets sont comparés comme du texte', () => {
   const env = creerEnvStandard();
-  env.semer('PARAM1', 'ACCES', [{ 'ID campagne': 'SOP_2027_PAC2', 'Email Google': 'n@eureden.com', Role: 'TC', 'Code technicien': 199405, Actif: 'OUI' }]);
+  env.semer('PARAM_FICHIER_TEST_00001', 'ACCES', [{ 'ID campagne': 'SOP_2027_PAC2', 'Email Google': 'n@eureden.com', Role: 'TC', 'Code technicien': 199405, Actif: 'OUI' }]);
   env.moi('n@eureden.com');
   assert.strictEqual(env.run('Auth.resolve().roles[0].perimetre.codeTc'), '199405');
 });
@@ -251,7 +251,7 @@ test('contrôles : en-tête modifié signalé', () => {
 });
 test('contrôles : onglet absent signalé', () => {
   const env = creerEnvStandard(); env.moi('admin@eureden.com');
-  delete env.classeurs.PARAM1._feuilles.CAPACITES;
+  delete env.classeurs.PARAM_FICHIER_TEST_00001._feuilles.CAPACITES;
   const r = env.run('Controles.run(Auth.resolve())');
   assert.ok(r.some((x) => x.niveau === 'ERREUR' && /CAPACITES/.test(x.sujet) && /absent/.test(x.detail)));
 });
@@ -277,7 +277,7 @@ test('installation : un autre utilisateur de l\'organisation est refusé', () =>
   assert.strictEqual(erreur(env, 'installerDepuisEditeur()'), 'JS:Fonction réservée au compte qui déploie l\'application.');
   assert.ok(!env.props.SOP_ADMINS);
   assert.strictEqual(erreur(env, "definirParametres_('AUTRE_ID')"), 'JS:Fonction réservée au compte qui déploie l\'application.');
-  assert.strictEqual(env.props.SOP_PARAM_ID, 'PARAM1');
+  assert.strictEqual(env.props.SOP_PARAM_ID, 'PARAM_FICHIER_TEST_00001');
 });
 test('installation : adresse illisible refusée', () => {
   const env = creerEnvStandard(); env.moi('');
@@ -285,8 +285,9 @@ test('installation : adresse illisible refusée', () => {
 });
 test('configuration : enregistre l\'ID, refuse le texte d\'exemple', () => {
   const env = creerEnvStandard(); env.moi('admin@eureden.com');
-  env.run("definirParametres_('NOUVEL_ID')");
-  assert.strictEqual(env.props.SOP_PARAM_ID, 'NOUVEL_ID');
+  env.run("definirParametres_('NOUVEL_ID_FICHIER_PARAMETRES_0001')");
+  assert.strictEqual(env.props.SOP_PARAM_ID, 'NOUVEL_ID_FICHIER_PARAMETRES_0001');
+  assert.ok(/pas un ID/.test(erreur(env, "definirParametres_('trop-court')")));
   assert.ok(/Renseignez/.test(erreur(env, 'configurerParametres()')));
 });
 test('vérification : le déployeur voit les contrôles, pas les autres', () => {
@@ -294,6 +295,19 @@ test('vérification : le déployeur voit les contrôles, pas les autres', () => 
   assert.ok(env.run('verifierInstallation()') >= 1);
   env.moi('guillaume@eureden.com');
   assert.ok(/réservée/.test(erreur(env, 'verifierInstallation()')));
+});
+
+test('ID de paramètres : le texte d\'exemple est refusé avec un message clair', () => {
+  const env = creerEnvStandard(); env.moi('admin@eureden.com');
+  env.props.SOP_PARAM_ID = 'COLLER_ICI_L_ID_DU_FICHIER_PARAMETRES_SOP';
+  assert.strictEqual(erreur(env, 'Auth.resolve()'), 'PARAM_ID_INVALIDE');
+  env.props.SOP_PARAM_ID = 'trop-court';
+  assert.strictEqual(erreur(env, 'Auth.resolve()'), 'PARAM_ID_INVALIDE');
+});
+test('classeur introuvable ou non partagé : CLASSEUR_INACCESSIBLE', () => {
+  const env = creerEnvStandard(); env.moi('admin@eureden.com');
+  env.props.SOP_PARAM_ID = 'AbCdEfGhIjKlMnOpQrStUvWxYz0123456789';
+  assert.strictEqual(erreur(env, 'Auth.resolve()'), 'CLASSEUR_INACCESSIBLE');
 });
 
 // ---------- Points d'entrée ----------

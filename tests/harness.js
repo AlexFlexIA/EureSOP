@@ -75,7 +75,7 @@ function creerEnv() {
   // Les objets sont recopiés pour sortir du contexte vm (sinon deepStrictEqual compare des prototypes différents).
   env.run = (expr) => { const v = vm.runInContext(expr, ctx); return v && typeof v === 'object' ? JSON.parse(JSON.stringify(v)) : v; };
   env.props = props;
-  env.classeurs.PARAM1 = creerClasseur('PARAMETRES_SOP', S.PARAMETRES_SOP);
+  env.classeurs.PARAM_FICHIER_TEST_00001 = creerClasseur('PARAMETRES_SOP', S.PARAMETRES_SOP);
   env.classeurs.SORTIE1 = creerClasseur('SORTIE_SOP', S.SORTIE_SOP);
   // Les en-têtes des modèles CSV doivent correspondre à la structure du code.
   Object.keys(S.PARAMETRES_SOP).forEach((t) => {
@@ -105,12 +105,12 @@ function creerEnv() {
 // Jeu de données de base : une campagne ouverte, les profils par défaut, quelques accès.
 function creerEnvStandard() {
   const env = creerEnv();
-  env.props.SOP_PARAM_ID = 'PARAM1';
-  env.semer('PARAM1', 'REGLAGES', [{ Cle: 'DOMAINES', Valeur: 'eureden.com' }]);
-  env.semer('PARAM1', 'CAMPAGNES', [{ 'ID campagne': 'SOP_2027_PAC2', Libelle: 'PAC 2 2027', Type: 'PAC2', Statut: 'OUVERTE', 'ID sortie': 'SORTIE1', Selectionnee: 'OUI' }]);
+  env.props.SOP_PARAM_ID = 'PARAM_FICHIER_TEST_00001';
+  env.semer('PARAM_FICHIER_TEST_00001', 'REGLAGES', [{ Cle: 'DOMAINES', Valeur: 'eureden.com' }]);
+  env.semer('PARAM_FICHIER_TEST_00001', 'CAMPAGNES', [{ 'ID campagne': 'SOP_2027_PAC2', Libelle: 'PAC 2 2027', Type: 'PAC2', Statut: 'OUVERTE', 'ID sortie': 'SORTIE1', Selectionnee: 'OUI' }]);
   const non = 'NON', oui = 'OUI';
   const profil = (Role, c, cp, ar, va, ch, vg, vb, co, perim) => ({ Role, Consultation: c, 'Correction prevision': cp, Arbitrage: ar, Validation: va, 'Correction historique': ch, 'Validation gamme': vg, 'Voir budget': vb, Configuration: co, 'Perimetre obligatoire': perim });
-  env.semer('PARAM1', 'PROFILS', [
+  env.semer('PARAM_FICHIER_TEST_00001', 'PROFILS', [
     profil('ADMIN', oui, oui, oui, oui, oui, oui, oui, oui, 'GLOBAL'),
     profil('PREV', oui, oui, oui, non, oui, non, oui, non, 'GLOBAL'),
     profil('RM', oui, non, non, non, non, oui, non, non, 'Marche'),
@@ -119,7 +119,7 @@ function creerEnvStandard() {
     profil('SUPPLY', oui, non, non, non, non, non, non, non, 'GLOBAL ou périmètre explicite')
   ]);
   const acces = (email, Role, extra) => Object.assign({ 'ID campagne': 'SOP_2027_PAC2', 'Email Google': email, Role, Actif: 'OUI' }, extra || {});
-  env.semer('PARAM1', 'ACCES', [
+  env.semer('PARAM_FICHIER_TEST_00001', 'ACCES', [
     acces('admin@eureden.com', 'ADMIN', { Global: 'OUI' }),
     acces('guillaume@eureden.com', 'PREV', { Global: 'OUI' }),
     acces('rt.argoat@eureden.com', 'RT', { 'Territoire TC': 'ARGOAT CENTRE BRETAGNE' }),
