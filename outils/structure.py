@@ -5,6 +5,7 @@
 # Conventions (reprises d'EurePrev) : noms d'onglets en MAJUSCULES_SANS_ACCENT, en-têtes sans accent,
 # codes et identifiants en TEXTE, OUI/NON en majuscules, vide = absence de valeur (jamais zéro).
 
+STRUCTURE_VERSION = "0.7"
 T, E, D, DT, B = "TEXTE", "ENTIER", "DECIMAL", "DATE", "OUI/NON"
 
 # (nom colonne, type, règle / exemple)
@@ -280,6 +281,7 @@ if __name__ == "__main__":
     (root / "code").mkdir(exist_ok=True)
     (root / "code" / "Structure.gs").write_text(
         "// Généré par outils/structure.py. Ne pas modifier à la main.\n"
+        "var SOP_STRUCTURE_VERSION = \"" + STRUCTURE_VERSION + "\";\n"
         "var SOP_STRUCTURE = " + json.dumps(cols, ensure_ascii=False, indent=1) + ";\n"
         "var SOP_TYPES = " + json.dumps(types, ensure_ascii=False) + ";\n", encoding="utf-8")
     print(sum(len(t) for _, t in FILES), "onglets")

@@ -1,4 +1,5 @@
 // Généré par outils/structure.py. Ne pas modifier à la main.
+var SOP_STRUCTURE_VERSION = "0.7";
 var SOP_STRUCTURE = {
  "PARAMETRES_SOP": {
   "MODE_EMPLOI": [

@@ -55,6 +55,9 @@ var Controles = (function () {
     if (!acces.some(function (l) { return norm(l.Role) === 'ADMIN' && Auth.ligneValide(l, profils); })) {
       res.push({ niveau: 'ATTENTION', sujet: 'Accès', detail: 'Aucun administrateur dans ACCES : seuls les administrateurs initiaux (propriété ' + SOP.PROP_ADMINS + ') ont la main.' });
     }
+    if (res.some(function (r) { return r.niveau === 'ERREUR' && /colonnes|Onglet absent/.test(r.detail); })) {
+      res.push({ niveau: 'ATTENTION', sujet: 'Modèle', detail: 'La structure attendue est la version ' + SOP_STRUCTURE_VERSION + ' du modèle. Si les classeurs ont été créés avec une version plus ancienne, réimportez les modèles actuels (Fichier > Importer > Remplacer la feuille de calcul garde le même ID).' });
+    }
     if (!res.length) res.push({ niveau: 'OK', sujet: 'Mise en service', detail: 'Structure, campagne et accès conformes.' });
     return res;
   }

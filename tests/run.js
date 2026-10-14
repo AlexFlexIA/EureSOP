@@ -249,6 +249,17 @@ test('contrôles : en-tête modifié signalé', () => {
   assert.strictEqual(e.length, 1);
   assert.match(e[0].detail, /ID version/);
 });
+test('contrôles : rappelle la version du modèle quand la structure diffère', () => {
+  const env = creerEnvStandard(); env.moi('admin@eureden.com');
+  env.feuille('SORTIE1', 'VERSIONS')._data[0][0] = 'Identifiant';
+  const r = env.run('Controles.run(Auth.resolve())');
+  const v = env.run('SOP_STRUCTURE_VERSION');
+  assert.ok(r.some((x) => x.sujet === 'Modèle' && x.detail.indexOf('version ' + v) >= 0));
+});
+test('contrôles : pas de rappel quand la structure est conforme', () => {
+  const env = creerEnvStandard(); env.moi('admin@eureden.com');
+  assert.ok(!env.run('Controles.run(Auth.resolve())').some((x) => x.sujet === 'Modèle'));
+});
 test('contrôles : onglet absent signalé', () => {
   const env = creerEnvStandard(); env.moi('admin@eureden.com');
   delete env.classeurs.PARAM_FICHIER_TEST_00001._feuilles.CAPACITES;

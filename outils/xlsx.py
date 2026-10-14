@@ -1,12 +1,12 @@
 # Génère un classeur .xlsx par fichier (en-têtes + quelques lignes par défaut). Usage : python3 outils/xlsx.py <dossier_sortie>
 import sys, pathlib
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
-from structure import FILES
+from structure import FILES, STRUCTURE_VERSION
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment
 
 DEFAUTS = {
- "MODE_EMPLOI": [("Version", "Modèle de structure v0.1 – vide, à compléter"),
+ "MODE_EMPLOI": [("Version", "Modèle de structure v" + STRUCTURE_VERSION + " – à compléter. L'application contrôle que les onglets et colonnes correspondent à cette version."),
                  ("Règles", "Codes en texte. Mois AAAA-MM. Semaine AAAA-Sss. OUI/NON. Une cellule vide n'est pas zéro."),
                  ("Attention", "Ne pas trier, insérer ou supprimer de lignes dans les onglets écrits par l'application.")],
  "REGLAGES": [("DOMAINES","eureden.com","Domaine exact de connexion"),("UNITE_PIVOT","T","Tonnes"),
