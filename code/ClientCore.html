@@ -118,12 +118,15 @@
   // series : [{ nom, couleur, valeurs: [] }], categories : []. Valeurs déjà dans l'unité d'affichage.
   App.barres = function (categories, series, hauteur) {
     var h = hauteur || 240, w = 620, pl = 56, pb = 26, pt = 10;
-    var max = Math.max.apply(null, [1].concat.apply([], series.map(function (s) { return s.valeurs; }))) * 1.1;
+    var brut = Math.max.apply(null, [1].concat.apply([], series.map(function (s) { return s.valeurs; })));
+    // Petites valeurs (comptages) : une graduation par entier ; sinon quatre graduations.
+    var entiers = brut <= 6;
+    var max = entiers ? Math.ceil(brut) : brut * 1.1, divisions = entiers ? Math.ceil(brut) : 4;
     var bw = (w - pl) / Math.max(1, categories.length);
     var y = function (v) { return pt + (h - pt - pb) * (1 - v / max); };
     var s = '<svg viewBox="0 0 ' + w + ' ' + h + '" width="100%" role="img" aria-label="Graphique en barres">';
-    for (var i = 0; i <= 4; i++) {
-      var v = max * i / 4;
+    for (var i = 0; i <= divisions; i++) {
+      var v = max * i / divisions;
       s += '<line x1="' + pl + '" x2="' + w + '" y1="' + y(v) + '" y2="' + y(v) + '" stroke="#e3e3e3"/><text x="' + (pl - 6) + '" y="' + (y(v) + 4) + '" font-size="10" text-anchor="end" fill="#444">' + nf.format(Math.round(v)) + '</text>';
     }
     var largeur = bw * 0.76 / series.length;
@@ -137,6 +140,29 @@
     });
     return s + '</svg>';
   };
+  // Courbes : series [{ nom, couleur, valeurs, pointille }], repere facultatif { valeur, couleur, nom } (ligne horizontale).
+  App.courbes = function (categories, series, hauteur, repere) {
+    var h = hauteur || 240, w = 620, pl = 56, pb = 26, pt = 10, pd = 18;
+    var toutes = [].concat.apply([], series.map(function (s) { return s.valeurs; })).concat(repere ? [repere.valeur] : [0]);
+    var max = Math.max.apply(null, toutes.concat([1])), min = Math.min.apply(null, toutes.concat([0]));
+    var etendue = (max - min) * 1.1 || 1;
+    var y = function (v) { return pt + (h - pt - pb) * (1 - (v - min) / etendue); };
+    var n = Math.max(1, categories.length - 1), x = function (i) { return pl + (w - pl - pd) * i / n; };
+    var s = '<svg viewBox="0 0 ' + w + ' ' + h + '" width="100%" role="img" aria-label="Courbe">';
+    for (var i = 0; i <= 4; i++) {
+      var v = min + etendue * i / 4;
+      s += '<line x1="' + pl + '" x2="' + w + '" y1="' + y(v) + '" y2="' + y(v) + '" stroke="#e3e3e3"/><text x="' + (pl - 6) + '" y="' + (y(v) + 4) + '" font-size="10" text-anchor="end" fill="#444">' + nf.format(Math.round(v)) + '</text>';
+    }
+    if (min < 0) s += '<line x1="' + pl + '" x2="' + w + '" y1="' + y(0) + '" y2="' + y(0) + '" stroke="#9B1C13" stroke-width="1.5"/>';
+    if (repere) s += '<line x1="' + pl + '" x2="' + w + '" y1="' + y(repere.valeur) + '" y2="' + y(repere.valeur) + '" stroke="' + repere.couleur + '" stroke-dasharray="5 4" stroke-width="2"><title>' + esc(repere.nom) + '</title></line>';
+    series.forEach(function (se) {
+      s += '<polyline fill="none" stroke="' + se.couleur + '" stroke-width="2.5"' + (se.pointille ? ' stroke-dasharray="5 4"' : '') + ' points="' + se.valeurs.map(function (val, k) { return x(k) + ',' + y(val); }).join(' ') + '"><title>' + esc(se.nom) + '</title></polyline>';
+    });
+    var pas = Math.max(1, Math.ceil(categories.length / 12));
+    categories.forEach(function (c, k) { if (k % pas === 0) s += '<text x="' + x(k) + '" y="' + (h - 8) + '" font-size="10" text-anchor="middle" fill="#444">' + esc(c) + '</text>'; });
+    return s + '</svg>';
+  };
+
   App.legende = function (series) {
     return '<div class="legend">' + series.map(function (s) { return '<span><i style="background:' + s.couleur + '"></i>' + esc(s.nom) + '</span>'; }).join('') + '</div>';
   };

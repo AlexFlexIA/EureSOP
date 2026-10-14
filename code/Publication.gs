@@ -19,6 +19,24 @@ var Publication = (function () {
     return lignes.length;
   }
 
+  // Commandes proposées (besoins de réapprovisionnement de la projection des stocks). Sans source de stocks, rien n'est écrit.
+  function publierAppro(acteur, ctx, version, entete) {
+    var p;
+    try { p = Stocks.projeter(acteur); } catch (e) {
+      Store.viderDonnees(ctx.idSortie, 'PUBLICATION_APPRO');
+      return { ecrit: false, raison: e && e.message ? e.message : 'Projection impossible.' };
+    }
+    var lignes = p.besoins.map(function (b) {
+      return Object.assign({}, entete, {
+        'Plateforme': '*', 'Code produit': b.code, 'Code fournisseur': b.fournisseur, 'Semaine commande': b.semaineCommande, 'Semaine livraison': b.semaineBesoin,
+        'Quantite': b.aCommander, 'Unite stock': UNITE_NON_RENSEIGNEE, 'Statut': 'PROPOSEE'
+      });
+    });
+    Store.viderDonnees(ctx.idSortie, 'PUBLICATION_APPRO');
+    Store.append(ctx.idSortie, 'PUBLICATION_APPRO', lignes);
+    return { ecrit: true, lignes: lignes.length };
+  }
+
   // lignes : lignes de PREVISION de la version validée. Renvoie { ecrit, ... } ; { ecrit: false, raison } si le cadençage manque.
   function publier(acteur, ctx, version, lignes, idOperation) {
     var annee = Number(acteur.campagne['Annee prevision']) || 0;
@@ -48,9 +66,10 @@ var Publication = (function () {
     Store.viderDonnees(ctx.idSortie, 'PUBLICATION_MENSUELLE');
     Store.append(ctx.idSortie, 'PUBLICATION_HEBDO', hebdo);
     Store.append(ctx.idSortie, 'PUBLICATION_MENSUELLE', mensuel);
+    var appro = publierAppro(acteur, ctx, version, entete);
     var nbContrat = ecrireContrat(ctx);
     Journal.log(ctx.idSortie, acteur, 'PUBLICATION_ECRITE', version.idVersion, '', 'contrat ' + SOP.CONTRAT_VERSION + ' · ' + mensuel.length + ' ligne(s) mensuelles, ' + hebdo.length + ' hebdomadaires', nonCadences ? nonCadences + ' article(s) sans cadençage' : '', idOperation);
-    return { ecrit: true, mensuelle: mensuel.length, hebdo: hebdo.length, nonCadences: nonCadences, contrat: nbContrat };
+    return { ecrit: true, mensuelle: mensuel.length, hebdo: hebdo.length, nonCadences: nonCadences, contrat: nbContrat, appro: appro };
   }
 
   // Republie la version validée courante (après un changement de cadençage par exemple).

@@ -1335,6 +1335,162 @@ test('publication : republier demande une version validée et le droit de valida
   assert.strictEqual(appel(env2, 'republier', ['p2']).code, 'CAPACITE_REFUSEE');
 });
 
+// ---------- Stocks et approvisionnements ----------
+const F_STOCK = 'FICHIER_STOCKS_0000000001', F_CMD = 'FICHIER_COMMANDES_00000001';
+function envStock(opts) {
+  opts = opts || {};
+  const env = envCad(); env.moi('admin@eureden.com');
+  env.ajouterClasseur(F_STOCK, { Stocks: [['Date stock', 'Plateforme', 'Code produit', 'Entite', 'Stock'],
+    ['2026-12-28', 'GLOMEL', DAP, 'Coop EUREDEN', 9999],
+    ['2027-01-04', 'GLOMEL', DAP, 'Coop EUREDEN', 5000],
+    ['04/01/2027', 'GRUEL', DAP, 'Coop EUREDEN', 3000],
+    ['2027-01-04', 'GLOMEL', ONA_ART, 'NEGOCE ONA', opts.stockOna === undefined ? 100 : opts.stockOna]] });
+  env.ajouterClasseur(F_CMD, { Commandes: [['N commande', 'Code fournisseur', 'Code produit', 'Code point', 'Date limite livraison', 'Quantite reste a livrer'],
+    ['C1', 'F1', DAP, 'GLOMEL', '2027-02-08', 4000],
+    ['C2', 'F1', DAP, 'GLOMEL', '2027-02-09', 0],
+    ['C3', 'F2', DAP, 'GLOMEL', '2026-11-01', opts.retard || 0]] });
+  const base = { 'Actif import': 'OUI' };
+  env.semer('PARAM_FICHIER_TEST_00001', 'SOURCES', [Object.assign({ 'ID source': 'STK', Nature: 'STOCKS', 'ID fichier': F_STOCK, Onglet: 'Stocks' }, base)].concat(
+    opts.sansCommandes ? [] : [Object.assign({ 'ID source': 'CMD', Nature: 'COMMANDES_FOURN', 'ID fichier': F_CMD, Onglet: 'Commandes' }, base)]));
+  if (opts.contraintes) env.semer('PARAM_FICHIER_TEST_00001', 'CONTRAINTES_APPRO', opts.contraintes);
+  if (opts.parametres) env.semer('PARAM_FICHIER_TEST_00001', 'PARAMETRES_STOCK', opts.parametres);
+  reprev(env, [], 'rp1');
+  sauverCoef(env, { coefficients: { 5: 25, 6: 25, 7: 25, 8: 25 } }, 'k1');
+  return env;
+}
+const proj = (env) => appel(env, 'stocks');
+const art = (d, code) => d.articles.filter((a) => a.code === code)[0];
+
+test('dates : lecture des formats et semaine ISO', () => {
+  const env = creerEnvStandard();
+  assert.strictEqual(env.run("Cadencage.semaineDe(Cadencage.dateDe('2027-02-08')).etiquette"), '2027-S06');
+  assert.strictEqual(env.run("Cadencage.semaineDe(Cadencage.dateDe('08/02/2027')).etiquette"), '2027-S06');
+  assert.strictEqual(env.run("Cadencage.semaineDe(Cadencage.dateDe('2027-01-03')).etiquette"), '2026-S53');
+  assert.strictEqual(env.run("Cadencage.semaineDe(Cadencage.dateDe('2027-01-04')).etiquette"), '2027-S01');
+  assert.strictEqual(env.run("Cadencage.semaineDe(Cadencage.dateDe('2026-12-31')).etiquette"), '2026-S53');
+  assert.strictEqual(env.run("Cadencage.dateDe('n importe quoi')"), null);
+});
+test('stocks : rupture prévue, semaine, manque et besoin de réapprovisionnement', () => {
+  const env = envStock();
+  const d = proj(env).data;
+  assert.strictEqual(d.dateStock, '2027-01-04');
+  assert.strictEqual(d.debut, '2027-S01');
+  assert.strictEqual(d.kpis.ruptures, 1);
+  const a = art(d, DAP);
+  assert.strictEqual(a.stock0, 8000);
+  assert.strictEqual(a.alerte, 'RUPTURE');
+  assert.strictEqual(a.semaineRupture, '2027-S07');
+  assert.ok(Math.abs(a.manque - 4345.188) < 0.01);
+  assert.strictEqual(a.receptions, 4000);
+  assert.strictEqual(d.semaines[d.semaines.indexOf('2027-S05')], '2027-S05');
+  assert.ok(Math.abs(a.serie[d.semaines.indexOf('2027-S06')] - 3827.406) < 0.01);
+  assert.strictEqual(d.besoins.length, 1);
+  assert.strictEqual(d.besoins[0].code, DAP);
+  assert.strictEqual(d.besoins[0].semaineBesoin, '2027-S07');
+  assert.strictEqual(d.besoins[0].fournisseur, 'F1');
+});
+test('stocks : seul le dernier relevé compte, plateformes additionnées par article', () => {
+  const d = proj(envStock()).data;
+  assert.strictEqual(art(d, DAP).stock0, 8000);
+  const glomel = d.plateformes.filter((p) => p.plateforme === 'GLOMEL')[0];
+  assert.strictEqual(glomel.stock, 5100);
+  assert.strictEqual(glomel.articles, 2);
+  assert.strictEqual(d.plateformes.filter((p) => p.plateforme === 'GRUEL')[0].stock, 3000);
+});
+test('stocks : une commande en retard est reçue dès la première semaine, une commande soldée est ignorée', () => {
+  const d = proj(envStock({ retard: 500 })).data;
+  const a = art(d, DAP);
+  assert.strictEqual(a.receptions, 4500);
+  assert.strictEqual(a.serie[0], 8500);
+});
+test('stocks : article sans rupture ni surstock, couverture en semaines', () => {
+  const a = art(proj(envStock()).data, ONA_ART);
+  assert.strictEqual(a.alerte, 'AUCUNE');
+  assert.strictEqual(a.fin, 50);
+  assert.ok(Math.abs(a.couverture - 8) < 0.01);
+});
+test('stocks : surstock quand le stock de fin dépasse la couverture maximale', () => {
+  const d = proj(envStock({ stockOna: 10000 })).data;
+  assert.strictEqual(art(d, ONA_ART).alerte, 'SURSTOCK');
+  assert.strictEqual(d.kpis.surstocks, 1);
+});
+test('stocks : stock mini, lot de réappro et délai fournisseur', () => {
+  const env = envStock({
+    parametres: [{ Plateforme: 'GLOMEL', 'Code produit': DAP, 'Stock mini': 500, 'Lot reappro': 1000, Actif: 'OUI' }],
+    contraintes: [{ 'Code fournisseur': 'F9', 'Code produit': DAP, 'Lead time semaines': 2 }]
+  });
+  const d = proj(env).data;
+  const a = art(d, DAP);
+  assert.strictEqual(a.mini, 500);
+  assert.strictEqual(a.semaineRupture, '2027-S07');
+  const b = d.besoins[0];
+  assert.ok(Math.abs(b.manque - (500 + 4345.188)) < 0.01);
+  assert.strictEqual(b.aCommander, 5000);
+  assert.strictEqual(b.delai, 2);
+  assert.strictEqual(b.semaineCommande, '2027-S05');
+  assert.strictEqual(b.fournisseur, 'F9');
+  assert.strictEqual(b.enRetard, false);
+});
+test('stocks : un délai plus long que le temps disponible est signalé en retard', () => {
+  const env = envStock({ contraintes: [{ 'Code fournisseur': 'F9', 'Code produit': DAP, 'Lead time semaines': 12 }] });
+  const b = proj(env).data.besoins[0];
+  assert.strictEqual(b.enRetard, true);
+  assert.strictEqual(b.semaineCommande, '2027-S01');
+});
+test('stocks : sans source, colonne manquante ou relevé vide', () => {
+  const env = envCad(); env.moi('admin@eureden.com');
+  assert.strictEqual(proj(env).code, 'STOCK_SANS_SOURCE');
+  const env2 = envStock();
+  env2.classeurs[F_STOCK]._feuilles.Stocks._data[0][4] = 'Autre';
+  assert.strictEqual(proj(env2).code, 'SOURCE_COLONNES');
+  const env3 = envStock();
+  env3.classeurs[F_STOCK]._feuilles.Stocks._data.length = 1;
+  assert.strictEqual(proj(env3).code, 'STOCK_VIDE');
+});
+test('stocks : sans commandes fournisseurs ni cadençage la projection reste possible', () => {
+  const env = envStock({ sansCommandes: true });
+  let d = proj(env).data;
+  assert.strictEqual(d.commandesConnectees, false);
+  assert.strictEqual(art(d, DAP).receptions, 0);
+  const env2 = envCad(); env2.moi('admin@eureden.com');
+  env2.ajouterClasseur(F_STOCK, { Stocks: [['Date stock', 'Plateforme', 'Code produit', 'Stock'], ['2027-01-04', 'GLOMEL', DAP, 10]] });
+  env2.semer('PARAM_FICHIER_TEST_00001', 'SOURCES', [{ 'ID source': 'STK', Nature: 'STOCKS', 'ID fichier': F_STOCK, Onglet: 'Stocks', 'Actif import': 'OUI' }]);
+  d = proj(env2).data;
+  assert.strictEqual(d.demandeConnectee, false);
+  assert.strictEqual(art(d, DAP).alerte, 'AUCUNE');
+});
+test('stocks : le tableau de bord remonte les ruptures, et une source illisible devient une alerte', () => {
+  const env = envStock();
+  const al = appel(env, 'tableauDeBord').data.alertes;
+  assert.ok(al.some((a) => a.titre === 'Rupture prévue' && /2027-S07/.test(a.detail)));
+  const env2 = envStock();
+  delete env2.classeurs[F_STOCK]._feuilles.Stocks;
+  const al2 = appel(env2, 'tableauDeBord').data.alertes;
+  assert.ok(al2.some((a) => a.titre === 'Stocks illisibles' && a.niveau === 'ERREUR'));
+});
+test('stocks : la validation publie les commandes proposées', () => {
+  const env = envStock();
+  const r = appel(env, 'validerVersion', [{}, 'v1']);
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(r.data.resultat.publication.appro.ecrit, true);
+  const l = env.lignes('SORTIE1', 'PUBLICATION_APPRO');
+  assert.strictEqual(l.length, 1);
+  assert.strictEqual(l[0]['Code produit'], DAP);
+  assert.strictEqual(l[0]['Code fournisseur'], 'F1');
+  assert.strictEqual(l[0].Statut, 'PROPOSEE');
+  assert.strictEqual(l[0]['Semaine livraison'], '2027-S07');
+  assert.ok(Math.abs(l[0].Quantite - 4345.188) < 0.01);
+  assert.strictEqual(l[0]['Version contrat'], '1.0');
+});
+test('stocks : sans source de stocks la publication d\'approvisionnement reste vide et le dit', () => {
+  const env = envCad(); env.moi('admin@eureden.com');
+  sauverCoef(env, { coefficients: { 5: 100 } }, 'k1');
+  reprev(env, [], 'rp1');
+  const r = appel(env, 'validerVersion', [{}, 'v1']);
+  assert.strictEqual(r.data.resultat.publication.appro.ecrit, false);
+  assert.strictEqual(env.lignes('SORTIE1', 'PUBLICATION_APPRO').length, 0);
+});
+
 let echecs = 0;
 tests.forEach(({ nom, fn }) => {
   try { fn(); console.log('  ok   ' + nom); } catch (e) { echecs++; console.log('  ECHEC ' + nom + '\n        ' + (e.message || e).split('\n')[0]); }

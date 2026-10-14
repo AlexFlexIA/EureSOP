@@ -1,0 +1,84 @@
+<script>
+(function () {
+  'use strict';
+  var App = window.App, esc = App.esc;
+
+  App.vues.stocks = function (c) {
+    var etat = { d: null, sel: '', q: '', risque: false };
+
+    function sansSource(r) {
+      c.innerHTML = '<h1>Projection des stocks</h1><p class="sub">Hebdomadaire, à partir des stocks, des commandes fournisseurs et de la prévision cadencée.</p>' +
+        '<div class="card"><h2>' + (r.code === 'STOCK_SANS_SOURCE' ? 'Source de stocks à connecter' : 'Projection impossible') + '</h2><p>' + esc(r.message) + '</p>' +
+        '<p class="note">Colonnes du fichier de stocks (nature STOCKS) : <b>Date stock</b>, <b>Plateforme</b>, <b>Code produit</b>, <b>Stock</b> (et Entite, facultative). Une ligne par plateforme et par article ; le dernier relevé de chaque article sert de départ.<br>' +
+        'Colonnes du fichier de commandes (nature COMMANDES_FOURN, facultatif) : <b>Code produit</b>, <b>Code point</b>, <b>Date limite livraison</b>, <b>Quantité reste à livrer</b>, <b>Code fournisseur</b> (facultatif).<br>' +
+        'Déclarez-les dans l\'onglet SOURCES des paramètres : ID fichier, Onglet, Actif import = OUI. La prévision doit aussi être cadencée (écran Cadençage).</p></div>';
+    }
+
+    function articlesVisibles() {
+      var q = etat.q.toLowerCase();
+      return etat.d.articles.filter(function (a) {
+        return (!etat.risque || a.alerte !== 'AUCUNE') && (!q || a.code.toLowerCase().indexOf(q) >= 0 || a.libelle.toLowerCase().indexOf(q) >= 0);
+      });
+    }
+    var pastilleAlerte = function (a) {
+      return a.alerte === 'RUPTURE' ? App.pill('bad', 'Rupture prévue', '✖') : a.alerte === 'SURSTOCK' ? App.pill('warn', 'Surstock', '⚠') : App.pill('ok', 'RAS', '✓');
+    };
+
+    function dessiner() {
+      var d = etat.d;
+      if (!d) return;
+      var k = d.kpis;
+      var kpis = [
+        ['Articles suivis', App.n0(k.articles), App.pill('info', 'Stock au ' + d.dateStock, 'ℹ')],
+        ['Ruptures prévues', App.n0(k.ruptures), k.ruptures ? App.pill('bad', 'Stock sous le minimum', '✖') : App.pill('ok', 'Aucune', '✓')],
+        ['Surstocks prévus', App.n0(k.surstocks), k.surstocks ? App.pill('warn', 'Au-dessus de la couverture max.', '⚠') : App.pill('ok', 'Aucun', '✓')],
+        ['Besoins de réappro', App.n0(k.besoins), App.pill('info', 'Quantités à commander', 'ℹ')]
+      ].map(function (x) { return '<div class="card kpi"><div class="l">' + esc(x[0]) + '</div><div class="v">' + esc(x[1]) + '</div><div class="d">' + x[2] + '</div></div>'; }).join('');
+      var notes = [];
+      if (!d.demandeConnectee) notes.push('La prévision n\'est pas cadencée : aucune demande n\'est déduite (écran Cadençage).');
+      if (!d.commandesConnectees) notes.push('Aucune source de commandes fournisseurs : aucune réception n\'est prévue.');
+      var courbe = etat.d.articles.filter(function (a) { return a.code === etat.sel; })[0] || d.articles.filter(function (a) { return a.alerte === 'RUPTURE'; })[0] || d.articles[0];
+      var graphes = '<div class="grid g2" style="margin-top:16px"><div class="card"><h2>Articles sous le minimum <small>nombre par semaine</small></h2>' +
+        App.barres(d.semaines.map(function (e) { return e.slice(5); }), [{ nom: 'Articles sous le minimum', couleur: '#9B1C13', valeurs: d.ruptureParSemaine }], 220) + '</div>' +
+        '<div class="card"><h2>Stock projeté <small>' + (courbe ? esc((courbe.libelle || courbe.code) + ' · quantité') : '') + '</small></h2>' + (courbe ? App.courbes(d.semaines.map(function (e) { return e.slice(5); }), [{ nom: 'Stock projeté', couleur: '#514F21', valeurs: courbe.serie }], 220, { valeur: courbe.mini, couleur: '#BAD264', nom: 'Stock mini' }) +
+        '<div class="legend"><span><i style="background:#514F21"></i>Stock projeté</span><span><i style="background:#BAD264"></i>Stock mini</span></div>' : '<div class="vide">Aucun article.</div>') + '</div></div>';
+      var lignes = articlesVisibles();
+      var table = '<div class="card"><h2>Articles <small>projection globale, toutes plateformes</small></h2><div class="row" style="margin-bottom:10px"><label class="ctl" style="margin:0">Rechercher<input id="s-q" type="search" maxlength="60" value="' + esc(etat.q) + '" placeholder="code ou libellé"></label>' +
+        '<label class="ligne"><input type="checkbox" id="s-risque"' + (etat.risque ? ' checked' : '') + '> Seulement les articles à risque</label></div><div class="scroll"><table><thead><tr><th>Article</th><th class="n">Stock actuel</th><th class="n">Réceptions</th><th class="n">Demande</th><th class="n">Stock de fin</th><th class="n">Couverture (sem.)</th><th>Alerte</th></tr></thead><tbody>' +
+        (lignes.slice(0, 200).map(function (a) {
+          return '<tr class="cliquable' + (courbe && a.code === courbe.code ? ' sel' : '') + '" data-code="' + esc(a.code) + '"><td><b>' + esc(a.libelle || a.code) + '</b><br><span class="note">' + esc(a.code) + '</span></td><td class="n">' + App.n0(a.stock0) + '</td><td class="n">' + App.n0(a.receptions) + '</td><td class="n">' + App.n0(a.demande) + '</td><td class="n">' + App.n0(a.fin) + '</td><td class="n">' + (a.couverture === null ? '–' : a.couverture.toFixed(1).replace('.', ',')) + '</td><td>' + pastilleAlerte(a) + (a.semaineRupture ? '<br><span class="note">' + esc(a.semaineRupture) + '</span>' : '') + '</td></tr>';
+        }).join('') || '<tr><td colspan="7" class="note">Aucun article ne correspond.</td></tr>') + '</tbody></table></div><p class="note">' + lignes.length + ' article(s)' + (lignes.length > 200 ? ', 200 affichés' : '') + '. Quantités en unités de stock. Un article est en rupture quand son stock projeté passe sous son minimum (PARAMETRES_STOCK, 0 par défaut) ; en surstock quand son stock de fin dépasse la couverture maximale (COUVERTURE_MAX_MOIS) de sa demande mensuelle moyenne.</p></div>';
+      var besoins = '<div class="card"><h2>Besoins de réapprovisionnement <small>quantité à commander pour éviter la rupture</small></h2>' + (d.besoins.length ? '<div class="scroll" style="max-height:340px"><table><thead><tr><th>Article</th><th>Besoin à la semaine</th><th class="n">Manque</th><th class="n">À commander</th><th class="n">Délai (sem.)</th><th>Commander avant</th><th>Fournisseur</th></tr></thead><tbody>' + d.besoins.map(function (b) {
+        return '<tr><td><b>' + esc(b.libelle || b.code) + '</b><br><span class="note">' + esc(b.code) + '</span></td><td>' + esc(b.semaineBesoin) + '</td><td class="n">' + App.n0(b.manque) + '</td><td class="n"><b>' + App.n0(b.aCommander) + '</b>' + (b.lot ? '<br><span class="note">lot de ' + App.n0(b.lot) + '</span>' : '') + '</td><td class="n">' + b.delai + '</td><td>' + esc(b.semaineCommande) + (b.enRetard ? '<br>' + App.pill('bad', 'Déjà en retard', '✖') : '') + '</td><td>' + esc(b.fournisseur || '–') + '</td></tr>';
+      }).join('') + '</tbody></table></div><div class="row" style="margin-top:10px"><button class="btn" id="s-csv" type="button">⬇ Exporter (Excel)</button><span class="note">Le délai vient de CONTRAINTES_APPRO (0 si absent), le lot de PARAMETRES_STOCK. Les commandes proposées sont publiées avec la version validée (PUBLICATION_APPRO).</span></div>' : '<div class="vide">Aucun besoin de réapprovisionnement.</div>') + '</div>';
+      var plats = '<div class="card"><h2>Stock par plateforme <small>dernier relevé</small></h2><table><thead><tr><th>Plateforme</th><th class="n">Articles</th><th class="n">Stock (unités de stock)</th></tr></thead><tbody>' + d.plateformes.map(function (p) {
+        return '<tr><td><b>' + esc(p.plateforme) + '</b></td><td class="n">' + App.n0(p.articles) + '</td><td class="n">' + App.n0(p.stock) + '</td></tr>';
+      }).join('') + '</tbody></table><p class="note">La projection est globale par article : répartir la demande par plateforme demande l\'affectation des TC aux plateformes (AFFECTATION_PLATEFORME), pas encore branchée. Les capacités de stockage s\'ajouteront avec le catalogue (poids des articles).</p></div>';
+      c.innerHTML = '<h1>Projection des stocks</h1><p class="sub">Hebdomadaire, du ' + esc(d.debut) + ' à ' + esc(d.semaines[d.semaines.length - 1]) + '. Stock du ' + esc(d.dateStock) + ', commandes fournisseurs restant à livrer, prévision retenue cadencée.</p>' +
+        (notes.length ? '<div class="card">' + notes.map(function (n) { return '<p>' + App.pill('warn', 'À noter', '⚠') + ' ' + esc(n) + '</p>'; }).join('') + '</div>' : '') +
+        '<div class="grid g4">' + kpis + '</div>' + graphes + '<div style="margin-top:16px"></div>' + besoins + table + plats;
+      brancher();
+    }
+
+    function brancher() {
+      var q = c.querySelector('#s-q');
+      q.oninput = function (e) { etat.q = e.target.value; var pos = e.target.selectionStart; dessiner(); var n = c.querySelector('#s-q'); n.focus(); n.setSelectionRange(pos, pos); };
+      c.querySelector('#s-risque').onchange = function (e) { etat.risque = e.target.checked; dessiner(); };
+      App.$$('tr[data-code]', c).forEach(function (tr) { tr.onclick = function () { etat.sel = tr.getAttribute('data-code'); dessiner(); }; });
+      var csv = c.querySelector('#s-csv');
+      if (csv) csv.onclick = function () {
+        var lignes = [['Code', 'Libellé', 'Semaine du besoin', 'Manque', 'À commander', 'Délai (semaines)', 'Commander avant', 'Fournisseur']];
+        etat.d.besoins.forEach(function (b) { lignes.push([b.code, b.libelle, b.semaineBesoin, b.manque, b.aCommander, b.delai, b.semaineCommande, b.fournisseur]); });
+        App.telecharger('besoins-appro-' + App.etat.session.campagne.id + '.csv', lignes);
+      };
+    }
+
+    App.etat.redessiner = dessiner;
+    App.donnees('stocks').then(function (r) {
+      if (App.etat.ecran !== 'stocks') return;
+      if (!r.ok) { sansSource(r); return; }
+      etat.d = r.data; dessiner();
+    });
+  };
+})();
+</script>

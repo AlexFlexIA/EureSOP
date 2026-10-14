@@ -165,6 +165,43 @@ var Cadencage = (function () {
     });
   }
 
+  // Date (UTC) d'une cellule : objet Date, AAAA-MM-JJ ou JJ/MM/AAAA. Null si illisible.
+  function dateDe(v) {
+    if (v && typeof v.getFullYear === 'function') return new Date(Date.UTC(v.getFullYear(), v.getMonth(), v.getDate()));
+    var t = txt(v), m;
+    if ((m = /^(\d{4})-(\d{2})-(\d{2})/.exec(t))) return new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
+    if ((m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(t))) return new Date(Date.UTC(Number(m[3]), Number(m[2]) - 1, Number(m[1])));
+    return null;
+  }
+  // Semaine ISO d'une date UTC : { annee, sem, etiquette }.
+  function semaineDe(d) {
+    var j = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+    j.setUTCDate(j.getUTCDate() - ((j.getUTCDay() + 6) % 7) + 3);
+    var annee = j.getUTCFullYear(), jan4 = new Date(Date.UTC(annee, 0, 4));
+    var sem = 1 + Math.round(((j.getTime() - jan4.getTime()) / 86400000 - 3 + ((jan4.getUTCDay() + 6) % 7)) / 7);
+    return { annee: annee, sem: sem, etiquette: etiquette(annee, sem) };
+  }
+
+  // Quantité retenue par semaine de livraison : { code: { 'AAAA-Sss': quantité } }, toutes entités confondues.
+  function demandeHebdo(acteur) {
+    var annee = Number(acteur.campagne['Annee prevision']) || 0;
+    var jeux = lire(acteur);
+    var res = { annee: annee, parArticle: {}, nonCadences: 0 };
+    if (!annee || !Object.keys(jeux).length) return res;
+    var d = Previsions.chargerCourante(acteur);
+    d.articles.forEach(function (a) {
+      var j = profil(jeux, a.code);
+      if (!j) { res.nonCadences++; return; }
+      if (!(a.retenue > 0)) return;
+      var cible = res.parArticle[a.code] = res.parArticle[a.code] || {};
+      repartir(a.retenue, j).forEach(function (x) {
+        var e = etiquette(annee, x.sem);
+        cible[e] = Math.round(((cible[e] || 0) + x.qte) * 1000) / 1000;
+      });
+    });
+    return res;
+  }
+
   // Écran : jeux de coefficients et répartition de la quantité retenue par semaine et par mois, dans les trois unités.
   function synthese(acteur) {
     Auth.requireCap(acteur, 'consultation');
@@ -205,6 +242,6 @@ var Cadencage = (function () {
     return res;
   }
 
-  return { lire: lire, profil: profil, repartir: repartir, sauvegarder: sauvegarder, supprimer: supprimer, valider: validerJeu, synthese: synthese,
+  return { dateDe: dateDe, semaineDe: semaineDe, demandeHebdo: demandeHebdo, lire: lire, profil: profil, repartir: repartir, sauvegarder: sauvegarder, supprimer: supprimer, valider: validerJeu, synthese: synthese,
     jeudi: jeudi, nbSemaines: nbSemaines, mois: mois, etiquette: etiquette, anneePrevue: anneePrevue };
 })();

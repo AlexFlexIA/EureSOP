@@ -23,6 +23,12 @@ function page() {
   const env = envPrev();
   env.feuille('PARAM_FICHIER_TEST_00001', 'CAMPAGNES')._data[1][3] = 2027;
   env.moi('admin@eureden.com');
+  env.ajouterClasseur('FICHIER_STOCKS_0000000001', { Stocks: [['Date stock', 'Plateforme', 'Code produit', 'Entite', 'Stock'],
+    ['2027-01-04', 'GLOMEL', '1109939', 'Coop EUREDEN', 5000], ['2027-01-04', 'GRUEL', '1109939', 'Coop EUREDEN', 3000], ['2027-01-04', 'GLOMEL', '2200001', 'NEGOCE ONA', 100]] });
+  env.ajouterClasseur('FICHIER_COMMANDES_00000001', { Commandes: [['Code produit', 'Code point', 'Date limite livraison', 'Quantite reste a livrer', 'Code fournisseur'], ['1109939', 'GLOMEL', '2027-02-08', 4000, 'F1']] });
+  env.semer('PARAM_FICHIER_TEST_00001', 'SOURCES', [
+    { 'ID source': 'STK', Nature: 'STOCKS', 'ID fichier': 'FICHIER_STOCKS_0000000001', Onglet: 'Stocks', 'Actif import': 'OUI' },
+    { 'ID source': 'CMD', Nature: 'COMMANDES_FOURN', 'ID fichier': 'FICHIER_COMMANDES_00000001', Onglet: 'Commandes', 'Actif import': 'OUI' }]);
   const erreurs = [];
   const nav = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || '/opt/pw-browsers/chromium', args: ['--no-sandbox'] });
   const p = await nav.newPage({ viewport: { width: 1280, height: 900 } });
@@ -183,6 +189,23 @@ function page() {
       await p.waitForSelector('main :text("Prévision mensuelle")');
       assert.ok(/févr\. 2027/.test(await texte('main')));
     });
+    await etape('stocks : ruptures prévues, besoins de réapprovisionnement, export', async () => {
+      await p.click('#menu [data-v=stocks]');
+      await p.waitForSelector('main :text("Besoins de réapprovisionnement")');
+      const t = await texte('main');
+      assert.ok(/ruptures prévues/i.test(t));
+      assert.ok(/D\.A\.P\. 35K/.test(t));
+      assert.ok(/F1/.test(t), 'le fournisseur de la commande doit apparaître');
+      const [dl] = await Promise.all([p.waitForEvent('download'), p.click('#s-csv')]);
+      assert.ok(/^besoins-appro-/.test(dl.suggestedFilename()));
+      await p.click('#s-risque');
+      assert.ok(/1 article\(s\)/.test(await texte('main')));
+    });
+    await etape('tableau de bord : alerte de rupture issue des stocks', async () => {
+      await p.click('#menu [data-v=dashboard]');
+      await p.waitForSelector('.alert');
+      assert.ok(/Rupture prévue/.test(await texte('main')));
+    });
     await etape('versions : liste et fiabilité de la méthode', async () => {
       await p.click('#menu [data-v=versions]');
       await p.waitForSelector('.vt li');
@@ -210,6 +233,7 @@ function page() {
       assert.strictEqual(v[v.length - 1].Type, 'VALIDEE');
       assert.strictEqual(v[v.length - 1].Verrouillee, 'OUI');
       assert.ok(env.lignes('SORTIE1', 'PUBLICATION_HEBDO').length > 0, 'la validation doit publier');
+      assert.ok(env.lignes('SORTIE1', 'PUBLICATION_APPRO').length > 0, 'les commandes proposées doivent être publiées');
       assert.ok(env.lignes('SORTIE1', 'PUBLICATION_MENSUELLE').some((x) => x.Mois === '2027-02'));
       await p.waitForSelector('table:has-text("Version validée")');
     });

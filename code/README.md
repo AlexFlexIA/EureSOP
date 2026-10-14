@@ -158,3 +158,21 @@ Interface sur le modèle de la maquette : en-tête (campagne, entité, unité), 
 - **Comparaison** de deux versions à partir de `INSTANTANES`, **fiabilité réelle** (prévision comparée aux ventes de l'année prévue dès que l'historique la contient), **journal** des modifications, exports CSV.
 - **Cadençage** (`COEFFICIENTS`, PARAMETRES_SOP) : une ligne par semaine ISO, niveau `GLOBAL` (cle `*`) ou `ARTICLE` (cle = code produit), somme 100. Un cadençage d'article remplace le global pour cet article. Les semaines sont celles de l'année de prévision de la campagne ; une semaine se rattache au mois de son jeudi. Les coefficients se saisissent dans l'écran Cadençage (saisie semaine par semaine, répartition uniforme, ou collage d'une colonne). Droit : arbitrage pour enregistrer, validation pour valider.
 - **Publication** (`PUBLICATION_MENSUELLE`, `PUBLICATION_HEBDO`, `CONTRAT`, SORTIE) : écrite à la validation d'une version, et à la demande (bouton Republier) après un changement de cadençage. Sans cadençage, la validation réussit mais rien n'est publié (message explicite). Une ligne par article, entité et semaine (ou mois). `Quantite reelle` égale `Quantite demande` tant que les ruptures ne sont pas branchées ; `Unite stock` et les tonnes restent vides tant que le catalogue (poids) n'est pas lu. Le contrat est décrit dans `CONTRAT` (version `SOP.CONTRAT_VERSION`, 1.0).
+
+## Projection des stocks et approvisionnements (v0.4.0)
+
+L'écran **Projection des stocks** projette, semaine par semaine et par article, le stock à partir du dernier relevé, des commandes fournisseurs restant à livrer et de la prévision retenue cadencée.
+
+Sources déclarées dans SOURCES (ID fichier, Onglet, Actif import = OUI) :
+
+| Nature | Colonnes reconnues (début du nom, sans accents ni casse) |
+|---|---|
+| `STOCKS` | `Date stock`, `Plateforme`, `Code produit`, `Stock`, `Entite` (facultative) |
+| `COMMANDES_FOURN` (facultative) | `Code produit`, `Code point`, `Date limite livraison`, `Quantite reste a livrer`, `Code fournisseur` (facultative) |
+
+- Dates acceptées : date Google Sheets, `AAAA-MM-JJ`, `JJ/MM/AAAA`. Le dernier relevé de chaque plateforme et article sert de départ ; plusieurs lignes d'un même relevé (par entité) s'additionnent.
+- Une commande en retard est reçue dès la première semaine ; une commande soldée est ignorée.
+- Rupture : le stock projeté passe sous le minimum de l'article (`PARAMETRES_STOCK`, somme des minimums, 0 par défaut). Surstock : le stock de fin dépasse `COUVERTURE_MAX_MOIS` (3 par défaut) de demande mensuelle moyenne.
+- Besoin de réapprovisionnement : manque maximal, arrondi au lot de `PARAMETRES_STOCK`, à commander avant la semaine du besoin moins le délai de `CONTRAINTES_APPRO` (0 si absent).
+- La projection est **globale par article** : répartir la demande par plateforme demande l'affectation des TC aux plateformes (non branchée). Les capacités de stockage demandent le poids des articles.
+- Les ruptures et surstocks alimentent les alertes du tableau de bord. Les commandes proposées sont publiées dans `PUBLICATION_APPRO` à la validation d'une version.

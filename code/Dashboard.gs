@@ -67,6 +67,7 @@ var Dashboard = (function () {
       var arretes = d.articles.filter(function (a) { return a.n1 === 0 && a.statistique === 0 && !a.substitution && !a.evenements && !a.correction; }).length;
       if (arretes) res.push({ niveau: 'INFO', titre: 'Articles non reconduits', detail: arretes + ' article(s) vendus avant ' + (d.anneeReference || 'N-1') + ' mais pas depuis ne sont pas reconduits (prévision à zéro).' });
     }
+    Stocks.alertes(acteur).forEach(function (a) { res.push(a); });
     var declarees = {};
     Params.table('SOURCES').forEach(function (r) { if (yes(r['Actif import']) && txt(r['ID fichier'])) declarees[norm(r.Nature)] = true; });
     SOURCES_ATTENDUES.forEach(function (s) {

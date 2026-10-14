@@ -56,6 +56,7 @@ var API_ = {
   supprimerCoefficients: function (a, args) { return Cadencage.supprimer(a, args[0], args[1], args[2]); },
   validerCoefficients: function (a, args) { return Cadencage.valider(a, args[0], args[1], args[2]); },
   republier: function (a, args) { return Publication.republier(a, args[0]); },
+  stocks: function (a) { return Stocks.projeter(a); },
   fiabiliteReelle: function (a) { return Previsions.fiabiliteReelle(a); },
   journal: function (a, args) { return Journal.lire(a, args[0]); },
   controles: function (a) { return Controles.run(a); },

@@ -3,14 +3,6 @@
   'use strict';
   var App = window.App, esc = App.esc;
 
-  // ---------- Écrans à venir ----------
-  function aVenir(titre, sous, besoin) {
-    return function (c) {
-      c.innerHTML = '<h1>' + esc(titre) + '</h1><p class="sub">' + esc(sous) + '</p><div class="card"><h2>Pas encore disponible</h2><p>' + esc(besoin) + '</p></div>';
-    };
-  }
-  App.vues.stocks = aVenir('Projection des stocks', 'Hebdomadaire, par plateforme.', 'Cet écran demande les sources de stocks et de commandes fournisseurs.');
-
   // ---------- Versions & fiabilité ----------
   var ACTIONS = {
     VERSION_CREEE: 'Version créée', VERSION_ARCHIVEE: 'Version archivée', VERSION_VERROUILLEE: 'Version verrouillée', VERSION_VALIDEE: 'Version validée',
