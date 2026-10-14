@@ -43,6 +43,25 @@ var Histo = (function () {
     });
   }
 
+  // Sources actives écartées parce que leur colonne « ID campagne » ne correspond pas à la campagne affichée.
+  function ecartees(idCampagne) {
+    return Params.table('SOURCES').filter(function (r) {
+      return norm(r.Nature) === 'HISTO_PAC' && yes(r['Actif import']) && txt(r['ID campagne']) && txt(r['ID campagne']) !== txt(idCampagne);
+    });
+  }
+
+  function messageSansSource(idCampagne) {
+    var base = 'Aucune source d\'historique active pour la campagne ' + idCampagne + '.';
+    var autres = ecartees(idCampagne);
+    if (!autres.length) return base + ' Dans SOURCES, déclarez une ligne de nature HISTO_PAC avec l\'ID du fichier et Actif import = OUI.';
+    var detail = autres.map(function (r) {
+      var v = txt(r['ID campagne']);
+      var ressembleId = /^[A-Za-z0-9_-]{25,}$/.test(v) && !/^[A-Z]+[A-Z0-9]*_\d{4}/.test(v);
+      return txt(r['ID source']) + ' (ID campagne = « ' + v.slice(0, 20) + (v.length > 20 ? '…' : '') + ' »' + (ressembleId ? ', cela ressemble à un ID de fichier : à coller dans la colonne ID fichier' : '') + ')';
+    }).join(' ; ');
+    return base + ' Sources écartées : ' + detail + '. La colonne ID campagne doit rester vide, ou contenir ' + idCampagne + '.';
+  }
+
   function annees(src) {
     var liste = txt(src.Annees).split(/[,;\s]+/).filter(Boolean);
     var vues = {};
@@ -108,7 +127,7 @@ var Histo = (function () {
     var campagne = txt(actor.campagne['ID campagne']);
     var liste = sources(campagne);
     if (!liste.length) {
-      throw new AppError('HISTO_SANS_SOURCE', 'Aucune source d\'historique active pour cette campagne. Dans SOURCES, déclarez une ligne de nature HISTO_PAC avec l\'ID du fichier et Actif import = OUI.');
+      throw new AppError('HISTO_SANS_SOURCE', messageSansSource(campagne));
     }
     var autorise = filtreAcces(actor);
     var toutesAnnees = {};
@@ -178,7 +197,7 @@ var Histo = (function () {
     var res = [];
     var liste;
     try { liste = sources(campagne); } catch (e) { return [{ niveau: 'ERREUR', sujet: 'Historique PAC', detail: e.message }]; }
-    if (!liste.length) return [{ niveau: 'ATTENTION', sujet: 'Historique PAC', detail: 'Aucune source HISTO_PAC active dans SOURCES.' }];
+    if (!liste.length) return [{ niveau: 'ATTENTION', sujet: 'Historique PAC', detail: messageSansSource(campagne) }];
     liste.forEach(function (src) {
       var nom = txt(src['ID source']);
       try {

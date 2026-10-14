@@ -448,6 +448,14 @@ test('historique : un périmètre territoire ou marché ne donne accès à rien'
   assert.strictEqual(r.totaux.reduce((s, x) => s + x.lignes, 0), 0);
   assert.strictEqual(r.nbArticles, 0);
 });
+test('historique : ID de fichier collé dans ID campagne, le message le dit', () => {
+  const env = creerEnvStandard(); env.moi('guillaume@eureden.com');
+  env.semer('PARAM_FICHIER_TEST_00001', 'SOURCES', [{ 'ID source': 'HISTO_EUREDEN', Nature: 'HISTO_PAC', 'Actif import': 'OUI', 'ID campagne': '1wYujNdVXVStg4EYVIl2S13qAlCUII93OoRmJPLZ3D0', Annees: '2025' }]);
+  const r = env.run('apiHistorique()');
+  assert.strictEqual(r.code, 'HISTO_SANS_SOURCE');
+  assert.ok(/colonne ID fichier/.test(r.message));
+  assert.ok(/HISTO_EUREDEN/.test(r.message));
+});
 test('historique : contrôles de mise en service listent chaque onglet', () => {
   const env = envHisto(); env.moi('admin@eureden.com');
   const c = env.run('Controles.run(Auth.resolve())').filter((x) => /^Historique /.test(x.sujet));
