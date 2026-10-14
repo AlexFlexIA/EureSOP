@@ -730,7 +730,7 @@ test('substitution : pas de chaînage, chaque report part de la statistique', ()
   const r = env.run("apiArbitrer({}, 'a1')").data.resultat;
   assert.strictEqual(prevLigne(env, 'C'), undefined);
   assert.strictEqual(prevLigne(env, 'B')['Qte arbitree'], STAT_DAP);
-  assert.ok(r.avertissements.some((a) => /n'a pas de prévision statistique/.test(a)));
+  assert.ok(r.avertissements.some((a) => /n'a pas de prévision de départ/.test(a)));
 });
 test('arbitrage : quantité négative ramenée à 0 avec avertissement', () => {
   const env = envPrev(); env.moi('guillaume@eureden.com');
@@ -1489,6 +1489,220 @@ test('stocks : sans source de stocks la publication d\'approvisionnement reste v
   const r = appel(env, 'validerVersion', [{}, 'v1']);
   assert.strictEqual(r.data.resultat.publication.appro.ecrit, false);
   assert.strictEqual(env.lignes('SORTIE1', 'PUBLICATION_APPRO').length, 0);
+});
+
+// ---------- Cache de l'historique ----------
+const ouv = (env, id) => env.ouvertures[id] || 0;
+
+test('cache : la deuxième exécution ne relit pas les fichiers d\'historique', () => {
+  const env = envPrev(); env.moi('guillaume@eureden.com');
+  const a = env.run('apiHistorique()').data;
+  const n = ouv(env, FICHIER_EUR);
+  assert.ok(n >= 1);
+  env.nouvelleExecution();
+  const b = env.run('apiHistorique()').data;
+  assert.strictEqual(ouv(env, FICHIER_EUR), n);
+  assert.deepStrictEqual(b.totaux, a.totaux);
+  assert.deepStrictEqual(b.articles, a.articles);
+});
+test('cache : actualiser force la relecture', () => {
+  const env = envPrev(); env.moi('guillaume@eureden.com');
+  env.run('apiHistorique()');
+  env.nouvelleExecution();
+  const n = ouv(env, FICHIER_EUR);
+  assert.strictEqual(appel(env, 'actualiser').ok, true);
+  env.nouvelleExecution();
+  env.run('apiHistorique()');
+  assert.ok(ouv(env, FICHIER_EUR) > n);
+});
+test('cache : un changement dans SOURCES change la clé', () => {
+  const env = envPrev(); env.moi('guillaume@eureden.com');
+  env.run('apiHistorique()');
+  const nb = Object.keys(env.cache).filter((k) => /:n$/.test(k)).length;
+  env.nouvelleExecution();
+  env.feuille('PARAM_FICHIER_TEST_00001', 'SOURCES')._data[1][15] = '2025';
+  env.run('apiHistorique()');
+  assert.strictEqual(Object.keys(env.cache).filter((k) => /:n$/.test(k)).length, nb + 1);
+});
+test('cache : gros historique découpé en entrées de moins de 100 Ko, résultat identique', () => {
+  const env = envPrev(); env.moi('guillaume@eureden.com');
+  const lignes = [ENT_HISTO];
+  for (let i = 0; i < 3500; i++) lignes.push(['c' + i, 3000000 + i, 'ARTICLE DE TEST NUMERO ' + i, 100000 + (i % 50), 'TC ' + (i % 50), 10 + i, 1 + (i % 7), 100 + i]);
+  env.ajouterClasseur(FICHIER_EUR, { 'Données 2024': lignes, 'Données 2025': lignes });
+  const a = env.run('apiHistorique()').data;
+  const entrees = Object.keys(env.cache).filter((k) => /:\d+$/.test(k));
+  assert.ok(entrees.length > 1, 'plusieurs morceaux attendus : ' + entrees.length);
+  assert.ok(entrees.every((k) => Buffer.byteLength(env.cache[k]) <= 100 * 1024));
+  env.nouvelleExecution();
+  const n = ouv(env, FICHIER_EUR);
+  const b = env.run('apiHistorique()').data;
+  assert.strictEqual(ouv(env, FICHIER_EUR), n);
+  assert.deepStrictEqual(b.totaux, a.totaux);
+  assert.strictEqual(b.nbArticles, a.nbArticles);
+});
+test('cache : un TC ne lit jamais le cache global et ne voit toujours que ses lignes', () => {
+  const env = envPrev(); env.moi('guillaume@eureden.com');
+  env.run("apiCalculerStatistique({}, 'op0')");
+  env.nouvelleExecution();
+  env.moi('tc.ok@eureden.com');
+  const a = env.run('apiHistorique()').data.articles.filter((x) => x.code === DAP)[0];
+  assert.strictEqual(a.parAnnee['2025'].qte, 900);
+});
+test('cache : indisponible ou plein, l\'application fonctionne quand même', () => {
+  const env = envPrev(); env.moi('guillaume@eureden.com');
+  env.run("CacheService.getScriptCache = function () { throw new Error('cache indisponible'); }");
+  const r = env.run('apiHistorique()');
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(r.data.totaux.length, 3);
+});
+test('cache : les corrections de l\'historique s\'appliquent même sur des données en cache', () => {
+  const env = envPrev(); env.moi('guillaume@eureden.com');
+  env.run('apiHistorique()');
+  env.nouvelleExecution();
+  corrH(env, {}, 'h1');
+  env.nouvelleExecution();
+  const a = env.run('apiHistorique()').data.articles.filter((x) => x.code === DAP)[0];
+  assert.strictEqual(a.parAnnee['2025'].qte, 20000);
+  env.nouvelleExecution();
+  const b = env.run('apiHistorique()').data.articles.filter((x) => x.code === DAP)[0];
+  assert.strictEqual(b.parAnnee['2025'].qte, 20000);
+  assert.strictEqual(b.parAnnee['2025'].brute.qte, 16900);
+});
+test('contrôles : année de prévision absente et source illisible signalées', () => {
+  const env = envPrev(); env.moi('admin@eureden.com');
+  env.semer('PARAM_FICHIER_TEST_00001', 'SOURCES', [{ 'ID source': 'CASSEE', Nature: 'STOCKS', 'ID fichier': 'FICHIER_INCONNU_0000000001', Onglet: 'X', 'Actif import': 'OUI' }]);
+  const c = env.run('Controles.run(Auth.resolve())');
+  assert.ok(c.some((x) => x.niveau === 'ATTENTION' && /Annee prevision/.test(x.detail)));
+  assert.ok(c.some((x) => x.niveau === 'ERREUR' && x.sujet === 'Source CASSEE'));
+  const env2 = envCad(); env2.moi('admin@eureden.com');
+  assert.ok(!env2.run('Controles.run(Auth.resolve())').some((x) => /Annee prevision/.test(x.detail)));
+});
+
+// ---------- Saisie des TC (PREV_TC) ----------
+const F_TC = 'FICHIER_EUREPREV_TC_0000001';
+const ENT_TC = ['N° TC', 'Code technicien Appro/DTD', 'Code produit long Triskalia', '_Canal de distribution', 'Saisie pour prévisions Coop (Oui ou Non)', 'PREV 2027', 'PREV 2027 en QTE', 'PREV 2027 en SURFACE', 'Etat saisie'];
+function envTC(opts) {
+  opts = opts || {};
+  const env = envCad(); env.moi('admin@eureden.com');
+  env.ajouterClasseur(F_TC, { DONNEES: [ENT_TC,
+    [1, 102441, 1109939, 'Coop EUREDEN', 'OUI', '', 9000, '', 'SAISI'],
+    [2, 199405, 1109939, 'Coop EUREDEN', 'OUI', '', '8 000,5', '', 'SAISI'],
+    [3, 111111, 1109939, 'Coop EUREDEN', 'OUI', '', '', '', 'NON_RENSEIGNE'],
+    [4, 159304, 2200001, 'NEGOCE ONA', 'OUI', '', 0, '', 'SAISI'],
+    [5, 159305, 3300003, 'NEGOCE ONA', 'OUI', '', 70, '', 'SAISI'],
+    [6, 159306, 4400004, 'NEGOCE ONA', 'NON', '', 5, '', 'SAISI']] });
+  env.semer('PARAM_FICHIER_TEST_00001', 'SOURCES', [{ 'ID source': 'TC', Nature: 'PREV_TC', 'ID fichier': F_TC, Onglet: 'DONNEES', 'Actif import': 'OUI' }]);
+  if (opts.base) env.semer('PARAM_FICHIER_TEST_00001', 'REGLAGES', [{ Cle: 'BASE_ARBITRAGE', Valeur: opts.base }]);
+  return env;
+}
+
+test('saisie des TC : lecture par article et entité, vide différent de zéro, lignes non saisissables incluses', () => {
+  const env = envTC();
+  const r = env.run('PrevTC.lire(Auth.resolve())');
+  assert.strictEqual(r.colonne, 'PREV 2027 en QTE');
+  assert.strictEqual(r.parArticle['COOP EUREDEN|1109939'].qte, 17000.5);
+  assert.strictEqual(r.parArticle['COOP EUREDEN|1109939'].nbTC, 2);
+  assert.strictEqual(r.parArticle['NEGOCE ONA|2200001'].qte, 0);
+  assert.strictEqual(r.parArticle['NEGOCE ONA|3300003'].qte, 70);
+  assert.deepStrictEqual(r.couverture, { lignes: 6, saisissables: 5, renseignees: 4, tc: 5, tcAyantSaisi: 4 });
+});
+test('saisie des TC : colonne de l\'année introuvable ou colonnes manquantes', () => {
+  const env = envTC();
+  env.classeurs[F_TC]._feuilles.DONNEES._data[0][6] = 'PREV 2026 en QTE';
+  assert.strictEqual(env.run("(function(){ try { PrevTC.lire(Auth.resolve()); } catch (e) { return e.code; } })()"), 'SOURCE_COLONNES');
+  const env2 = envTC();
+  env2.classeurs[F_TC]._feuilles.DONNEES._data[0][1] = 'Autre';
+  assert.strictEqual(env2.run("(function(){ try { PrevTC.lire(Auth.resolve()); } catch (e) { return e.code; } })()"), 'SOURCE_COLONNES');
+});
+test('saisie des TC : sans source déclarée, rien n\'est lu', () => {
+  const env = envCad(); env.moi('admin@eureden.com');
+  assert.strictEqual(env.run('PrevTC.lire(Auth.resolve())'), null);
+});
+test('saisie des TC : Qte TC écrite dans PREVISION, articles saisis sans historique créés', () => {
+  const env = envTC();
+  env.run("apiCalculerStatistique({}, 'op0')");
+  assert.strictEqual(prevLigne(env, DAP)['Qte TC'], 17000.5);
+  assert.strictEqual(prevLigne(env, DAP)['Qte statistique'], STAT_DAP);
+  const nouveau = prevLigne(env, '3300003');
+  assert.strictEqual(nouveau['Qte TC'], 70);
+  assert.strictEqual(nouveau['Qte statistique'], 0);
+  assert.strictEqual(prevLigne(env, ONA_ART)['Qte TC'], 0);
+  assert.strictEqual(prevLigne(env, '4400004')['Qte TC'], 5);
+});
+test('saisie des TC : par défaut l\'arbitrage part de la statistique, avec BASE_ARBITRAGE = TC il part de la saisie', () => {
+  const env = envTC();
+  reprev(env, [{ entite: 'Coop EUREDEN', code: DAP, quantite: -500 }], 'rp1');
+  assert.strictEqual(prevLigne(env, DAP)['Qte arbitree'], STAT_DAP - 500);
+  const env2 = envTC({ base: 'TC' });
+  const r = reprev(env2, [{ entite: 'Coop EUREDEN', code: DAP, quantite: -500 }], 'rp1');
+  assert.strictEqual(r.data.resultat.baseTc, true);
+  assert.strictEqual(prevLigne(env2, DAP)['Qte arbitree'], 17000.5 - 500);
+  assert.strictEqual(prevLigne(env2, '3300003')['Qte arbitree'], 70);
+  assert.strictEqual(prevLigne(env2, ONA_ART)['Qte arbitree'], 0);
+  assert.ok(/saisie des TC/.test(env2.lignes('SORTIE1', 'VERSIONS')[0].Libelle));
+});
+test('saisie des TC : un pourcentage et une substitution s\'appliquent à la quantité de départ', () => {
+  const env = envTC({ base: 'TC' });
+  ajout(env, { nature: 'CORRECTION', code: DAP, entite: 'Coop EUREDEN', pourcent: 10, motif: 'm' }, 'c1');
+  ajout(env, { nature: 'SUBSTITUTION', ancien: '3300003', nouveau: '5500005', entite: 'NEGOCE ONA', taux: 50 }, 's1');
+  env.run("apiArbitrer({}, 'a1')");
+  assert.ok(Math.abs(prevLigne(env, DAP)['Qte correction'] - 1700.05) < 0.001);
+  assert.strictEqual(prevLigne(env, '3300003')['Qte substitution'], -35);
+  assert.strictEqual(prevLigne(env, '5500005')['Qte arbitree'], 35);
+});
+test('saisie des TC : une source illisible n\'empêche pas le calcul et le dit', () => {
+  const env = envTC();
+  env.classeurs[F_TC]._feuilles.DONNEES._data[0][6] = 'PREV 2026 en QTE';
+  const r = env.run("apiCalculerStatistique({}, 'op0')");
+  assert.strictEqual(r.ok, true);
+  assert.ok(r.data.resultat.avertissements.some((a) => /Prévisions des TC/.test(a)));
+  assert.strictEqual(prevLigne(env, DAP)['Qte TC'], '');
+});
+test('saisie des TC : prévision courante avec saisie, départ et totaux', () => {
+  const env = envTC();
+  env.run("apiCalculerStatistique({}, 'op0')");
+  const d = env.run('apiPrevision()').data;
+  const a = d.articles.filter((x) => x.code === DAP)[0];
+  assert.strictEqual(a.tc, 17000.5);
+  assert.strictEqual(a.depart, STAT_DAP);
+  const eur = d.totaux.filter((t) => t.entite === 'Coop EUREDEN')[0];
+  assert.strictEqual(eur.tc, 17000.5);
+  assert.strictEqual(eur.q.tc, 17000.5);
+  const sans = envCad(); sans.moi('admin@eureden.com');
+  sans.run("apiCalculerStatistique({}, 'op0')");
+  assert.strictEqual(sans.run('apiPrevision()').data.articles[0].tc, null);
+});
+test('saisie des TC : le fichier EurePrev est mis en cache, et « actualiser » le relit', () => {
+  const env = envTC();
+  env.run('PrevTC.lire(Auth.resolve())');
+  const n = ouv(env, F_TC);
+  assert.ok(n >= 1);
+  env.nouvelleExecution();
+  env.run('PrevTC.lire(Auth.resolve())');
+  assert.strictEqual(ouv(env, F_TC), n);
+  appel(env, 'actualiser');
+  env.nouvelleExecution();
+  env.run('PrevTC.lire(Auth.resolve())');
+  assert.ok(ouv(env, F_TC) > n);
+});
+test('saisie des TC : le tableau de bord signale les écarts avec la statistique et la saisie incomplète', () => {
+  const env = envTC();
+  env.run("apiCalculerStatistique({}, 'op0')");
+  const d = appel(env, 'tableauDeBord').data;
+  assert.deepStrictEqual(d.tc.couverture, { lignes: 6, saisissables: 5, renseignees: 4, tc: 5, tcAyantSaisi: 4 });
+  // D.A.P. : 17 001 contre 16 345, soit +4 %, sous le seuil de 15 % : pas d'alerte. L'autre article et l'article sans statistique en ont une.
+  assert.ok(!d.alertes.some((a) => a.titre === 'Saisie TC vs statistique' && /D\.A\.P\./.test(a.detail)));
+  assert.ok(d.alertes.some((a) => a.titre === 'Saisie TC vs statistique' && /AUTRE ARTICLE/.test(a.detail) && /TC 0 contre statistique 50 \(-100 %\)/.test(a.detail)));
+  assert.ok(d.alertes.some((a) => a.titre === 'Saisie TC vs statistique' && /3300003/.test(a.detail) && /pas de statistique/.test(a.detail)));
+  assert.ok(d.alertes.some((a) => a.titre === 'Saisie des TC incomplète' && /4 TC sur 5/.test(a.detail)));
+  assert.ok(!d.alertes.some((a) => a.titre === 'Source non connectée' && /TC/.test(a.detail)));
+});
+test('saisie des TC : une source illisible donne une alerte et pas une erreur du tableau de bord', () => {
+  const env = envTC();
+  env.classeurs[F_TC]._feuilles.DONNEES._data[0][6] = 'PREV 2026 en QTE';
+  const r = appel(env, 'tableauDeBord');
+  assert.strictEqual(r.ok, true);
+  assert.ok(r.data.alertes.some((a) => a.titre === 'Prévisions des TC illisibles' && a.niveau === 'ERREUR'));
 });
 
 let echecs = 0;

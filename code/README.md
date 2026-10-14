@@ -176,3 +176,10 @@ Sources déclarées dans SOURCES (ID fichier, Onglet, Actif import = OUI) :
 - Besoin de réapprovisionnement : manque maximal, arrondi au lot de `PARAMETRES_STOCK`, à commander avant la semaine du besoin moins le délai de `CONTRAINTES_APPRO` (0 si absent).
 - La projection est **globale par article** : répartir la demande par plateforme demande l'affectation des TC aux plateformes (non branchée). Les capacités de stockage demandent le poids des articles.
 - Les ruptures et surstocks alimentent les alertes du tableau de bord. Les commandes proposées sont publiées dans `PUBLICATION_APPRO` à la validation d'une version.
+
+## Saisie des TC, cache (v0.5.0)
+
+- **Saisie des TC** : source de nature `PREV_TC` dans SOURCES, pointant vers la sortie EurePrev (onglet `DONNEES` par défaut). Colonnes lues (début du nom, sans accents ni soulignés de tête) : `Canal de distribution` (entité), `Code produit`, `Code technicien`, `PREV AAAA en QTE` (AAAA = année de prévision de la campagne), `Saisie pour prévisions Coop` (OUI = ligne à saisir). Une cellule vide n'est pas un zéro. La saisie est agrégée par article et par entité dans la colonne `Qte TC` de `PREVISION`, et comparée à la statistique (alertes si l'écart dépasse `SEUIL_ECART_N1`).
+- **Quantité de départ de l'arbitrage** : réglage `BASE_ARBITRAGE` = `STATISTIQUE` (par défaut) ou `TC` (saisie des TC quand elle existe, sinon statistique). Les pourcentages de correction et les substitutions s'appliquent à cette quantité.
+- Un fichier TC illisible n'empêche jamais le calcul : un avertissement est affiché.
+- **Cache** (`Cache.gs`) : l'historique agrégé et la saisie des TC sont gardés 10 minutes dans le cache du script (entrées découpées sous 100 Ko). Le bouton « Actualiser » de l'en-tête force la relecture. Un cache indisponible ne change rien au résultat, seulement au temps de réponse.

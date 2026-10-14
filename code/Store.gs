@@ -59,6 +59,9 @@ var Store = (function () {
 
   function invalider(id, tab) { delete memo[cle(id, tab)]; }
 
+  // Oublie classeurs et lectures mémorisées. Apps Script le fait de lui-même à chaque exécution ; les tests s'en servent.
+  function reset() { books = {}; memo = {}; }
+
   // Ajoute des lignes à la suite. Les colonnes inconnues sont refusées pour attraper les fautes de frappe.
   function append(id, tab, objets) {
     if (!objets.length) return;
@@ -117,5 +120,5 @@ var Store = (function () {
     return { ok: manquants.length === 0 && inconnus.length === 0, manquants: manquants, inconnus: inconnus, ordre: ordre };
   }
 
-  return { read: read, append: append, apercu: apercu, viderDonnees: viderDonnees, updateRow: updateRow, checkHeaders: checkHeaders, invalider: invalider };
+  return { reset: reset, read: read, append: append, apercu: apercu, viderDonnees: viderDonnees, updateRow: updateRow, checkHeaders: checkHeaders, invalider: invalider };
 })();

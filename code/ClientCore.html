@@ -22,12 +22,13 @@
   App.valArt = function (a, champ) {
     var u = App.etat.unite;
     if (champ === 'n1') return u === 'Q' ? a.n1 : (u === 'H' ? a.n1ha : a.n1eur);
+    if (a[champ] === null || a[champ] === undefined) return null;
     return a[champ] * (u === 'Q' ? 1 : (u === 'H' ? a.rh : a.re));
   };
   // Totaux de l'entité filtrée (ou de toutes), dans l'unité choisie.
   App.totaux = function (liste) {
     var ent = App.etat.entite, cle = App.UNITES[App.etat.unite].cle;
-    var t = { articles: 0, n1: 0, statistique: 0, evenements: 0, correction: 0, substitution: 0, retenue: 0 };
+    var t = { articles: 0, n1: 0, statistique: 0, tc: 0, evenements: 0, correction: 0, substitution: 0, retenue: 0 };
     (liste || []).forEach(function (x) {
       if (ent && x.entite !== ent) return;
       t.articles += x.articles;
@@ -208,6 +209,14 @@
       App.invalider(); App.demarrer();
     };
     $('#ent').onchange = function () { App.etat.entite = $('#ent').value; App.surFiltre(); };
+    $('#actualiser').onclick = function () {
+      var b = $('#actualiser'); b.disabled = true;
+      App.appel('actualiser', []).then(function (r) {
+        b.disabled = false;
+        App.toast(r.ok ? 'Fichiers sources relus.' : r.message);
+        App.invalider(); App.afficher(App.etat.ecran);
+      });
+    };
     App.$$('#unites button[data-u]').forEach(function (b) {
       b.setAttribute('aria-pressed', b.getAttribute('data-u') === App.etat.unite ? 'true' : 'false');
       b.onclick = function () {
@@ -217,6 +226,12 @@
       };
     });
   }
+
+  // Une erreur de rendu ne doit pas figer l'écran : on l'affiche et on garde le menu.
+  window.addEventListener('error', function (e) {
+    var c = $('#contenu');
+    if (c && !$('#app').hidden) c.innerHTML = '<div class="card"><h2>Affichage impossible</h2><p>Une erreur d\'affichage est survenue. Rechargez la page ; si elle persiste, contactez l\'administrateur.</p><p class="note">' + esc(e.message || '') + '</p></div>';
+  });
 
   App.demarrer = function () {
     $('#chargement').hidden = false; $('#erreur').hidden = true; $('#app').hidden = true;

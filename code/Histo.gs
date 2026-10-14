@@ -140,16 +140,8 @@ var Histo = (function () {
     return Object.keys(vues).map(function (k) { return vues[k]; });
   }
 
-  // toutVoir : ignore le périmètre (réservé aux calculs faits par un rôle au périmètre global).
-  // brut : n'applique pas les corrections de l'historique (pour mesurer ce qu'une correction change).
-  function agreger(actor, toutVoir, brut) {
-    Auth.requireCap(actor, 'consultation');
-    var campagne = txt(actor.campagne['ID campagne']);
-    var liste = sources(campagne);
-    if (!liste.length) {
-      throw new AppError('HISTO_SANS_SOURCE', messageSansSource(campagne));
-    }
-    var autorise = toutVoir ? function () { return true; } : filtreAcces(actor);
+  // Lecture et agrégation des onglets (partie lourde, sans les corrections). Résultat sérialisable, donc mis en cache.
+  function collecter(liste, autorise) {
     var toutesAnnees = {};
     var totaux = {};
     var articles = {};
@@ -197,11 +189,35 @@ var Histo = (function () {
       t.tc = Object.keys(tcVus).filter(function (c) { return c.indexOf(t.entite + '|' + t.annee + '|') === 0; }).length;
       return t;
     }).sort(function (a, b) { return a.entite < b.entite ? -1 : a.entite > b.entite ? 1 : (a.annee < b.annee ? -1 : 1); });
+    return { toutesAnnees: toutesAnnees, totaux: totaux, articles: articles, infos: infos, avertissements: avertissements, an: an, derniere: derniere, totauxListe: totauxListe };
+  }
+
+  // toutVoir : ignore le périmètre (réservé aux calculs faits par un rôle au périmètre global).
+  // brut : n'applique pas les corrections de l'historique (pour mesurer ce qu'une correction change).
+  function agreger(actor, toutVoir, brut) {
+    Auth.requireCap(actor, 'consultation');
+    var campagne = txt(actor.campagne['ID campagne']);
+    var liste = sources(campagne);
+    if (!liste.length) {
+      throw new AppError('HISTO_SANS_SOURCE', messageSansSource(campagne));
+    }
+    var base;
+    // Un rôle au périmètre global voit toutes les lignes : même résultat que toutVoir, donc cache partagé.
+    var global = toutVoir || Auth.inScope(actor, 'consultation', {});
+    if (global) {
+      var cle = Cache.cle('histo', campagne + '|' + liste.map(function (r) { return [txt(r['ID source']), txt(r['ID fichier']), txt(r.Onglet), txt(r.Annees), txt(r.Entite)].join('~'); }).join('|'));
+      base = Cache.lire(cle);
+      if (!base) { base = collecter(liste, function () { return true; }); Cache.ecrire(cle, base); }
+    } else {
+      base = collecter(liste, filtreAcces(actor));
+    }
+    var toutesAnnees = base.toutesAnnees, totaux = base.totaux, articles = base.articles, infos = base.infos, avertissements = base.avertissements;
+    var an = base.an, derniere = base.derniere, totauxListe = base.totauxListe;
 
     // Corrections de l'historique : elles remplacent la quantité d'un article pour une année. Elles ne s'appliquent que si
     // l'acteur voit toutes les lignes (global) : un TC ne voit qu'une partie des ventes d'un article.
     var nbCorrections = 0;
-    if (!brut && (toutVoir || Auth.inScope(actor, 'consultation', {}))) {
+    if (!brut && global) {
       var index = {};
       Object.keys(articles).forEach(function (k) { index[norm(k)] = k; });
       lireCorrections(actor).forEach(function (cr) {
@@ -215,8 +231,7 @@ var Histo = (function () {
         }
         var p = a.parAnnee[cr.annee] || (a.parAnnee[cr.annee] = { qte: 0, ha: 0, mt: 0, tc: 0 });
         var facteur = p.qte > 0 ? cr.corrigee / p.qte : 1;
-        var tk = cr.entite + '|' + cr.annee;
-        var t = totaux[tk];
+        var t = totauxListe.filter(function (x) { return norm(x.entite) === norm(cr.entite) && x.annee === cr.annee; })[0];
         if (t) t.deltaQte = (t.deltaQte || 0) + (cr.corrigee - p.qte);
         p.brute = { qte: p.qte, ha: p.ha, mt: p.mt };
         p.qte = cr.corrigee; p.ha = p.ha * facteur; p.mt = p.mt * facteur;

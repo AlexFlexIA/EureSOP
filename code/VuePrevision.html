@@ -16,16 +16,16 @@
     function nouvelle(a) {
       var m = etat.modif[cle(a)];
       if (!m) return appliquee(a);
-      if (m.pourcent !== undefined) return a.statistique * m.pourcent / 100;
+      if (m.pourcent !== undefined) return a.depart * m.pourcent / 100;
       return m.quantite;
     }
-    function retenueLive(a) { return Math.max(0, a.statistique + a.evenements + a.substitution + nouvelle(a)); }
+    function retenueLive(a) { return Math.max(0, a.depart + a.evenements + a.substitution + nouvelle(a)); }
     var ratio = function (a) { return App.etat.unite === 'Q' ? 1 : (App.etat.unite === 'H' ? a.rh : a.re); };
 
     function valeurCellule(a) {
       var q = nouvelle(a);
       if (!q && !etat.modif[cle(a)]) return '';
-      if (etat.mode === 'p') return a.statistique ? +(q / a.statistique * 100).toFixed(1) : '';
+      if (etat.mode === 'p') return a.depart ? +(q / a.depart * 100).toFixed(1) : '';
       return +(q * ratio(a)).toFixed(App.etat.unite === 'Q' ? 1 : 0);
     }
 
@@ -51,18 +51,18 @@
       var peut = (droits.arbitrage && droits.correctionPrevision) && ouverte && !etat.d.version.verrouillee;
       var corps = lignes.slice(0, 200).map(function (a) {
         var k = cle(a), v = valeurCellule(a);
-        var inactif = !peut || (etat.mode === 'p' ? !a.statistique : !ratio(a));
+        var inactif = !peut || (etat.mode === 'p' ? !a.depart : !ratio(a));
         var l = retenueLive(a);
         var n1 = App.valArt(a, 'n1');
         var ret = l * (App.etat.unite === 'Q' ? 1 : ratio(a));
         var cel = function (champ) { var x = App.valArt(a, champ); return '<td class="n">' + (x ? (x > 0 ? '+' : '') + App.fmt(x) : '–') + '</td>'; };
         return '<tr class="cliquable' + (etat.sel === k ? ' sel' : '') + '" data-k="' + esc(k) + '"><td><b>' + esc(a.libelle || a.code) + '</b><br><span class="note">' + esc(a.code) + '</span></td><td>' + esc(a.entite) + '</td>' +
-          '<td class="n">' + App.fmt(n1) + '</td><td class="n">' + App.fmt(App.valArt(a, 'statistique')) + '</td>' + cel('evenements') + cel('substitution') +
-          '<td class="n"><input class="cell' + (etat.modif[k] ? ' changed' : '') + '" type="text" inputmode="decimal" value="' + esc(v) + '" placeholder="0" data-k="' + esc(k) + '"' + (inactif ? ' disabled title="Correction impossible ici (droits, unité sans coefficient, ou statistique nulle)"' : '') + ' aria-label="Correction ' + esc(a.libelle || a.code) + '"></td>' +
+          '<td class="n">' + App.fmt(n1) + '</td><td class="n">' + App.fmt(App.valArt(a, 'statistique')) + '</td><td class="n">' + (a.tc === null ? '–' : App.fmt(App.valArt(a, 'tc'))) + '</td>' + cel('evenements') + cel('substitution') +
+          '<td class="n"><input class="cell' + (etat.modif[k] ? ' changed' : '') + '" type="text" inputmode="decimal" value="' + esc(v) + '" placeholder="0" data-k="' + esc(k) + '"' + (inactif ? ' disabled title="Correction impossible ici (droits, unité sans coefficient, ou quantité de départ nulle)"' : '') + ' aria-label="Correction ' + esc(a.libelle || a.code) + '"></td>' +
           '<td class="n"><b>' + App.fmt(ret) + '</b></td><td class="n">' + (n1 ? App.variation(ret, n1) : '—') + '</td><td>' + statut(a) + '</td></tr>';
       }).join('');
       var unite = etat.mode === 'p' ? '%' : App.UNITES[App.etat.unite].lbl.toLowerCase();
-      return '<table><thead><tr><th>Article</th><th>Entité</th><th class="n">Réalisé ' + esc(ref) + '</th><th class="n">Statistique</th><th class="n">Événements</th><th class="n">Substitutions</th><th class="n">Correction (' + esc(unite) + ')</th><th class="n">Retenue</th><th class="n">vs ' + esc(ref) + '</th><th>Statut</th></tr></thead><tbody>' + (corps || '<tr><td colspan="10" class="note">Aucun article ne correspond.</td></tr>') + '</tbody></table>' +
+      return '<table><thead><tr><th>Article</th><th>Entité</th><th class="n">Réalisé ' + esc(ref) + '</th><th class="n">Statistique</th><th class="n">Prév. TC</th><th class="n">Événements</th><th class="n">Substitutions</th><th class="n">Correction (' + esc(unite) + ')</th><th class="n">Retenue</th><th class="n">vs ' + esc(ref) + '</th><th>Statut</th></tr></thead><tbody>' + (corps || '<tr><td colspan="11" class="note">Aucun article ne correspond.</td></tr>') + '</tbody></table>' +
         '<p class="note">' + lignes.length + ' article(s)' + (lignes.length > 200 ? ', 200 affichés : affinez la recherche' : '') + (etat.d.tronque ? ' · ' + etat.d.nbArticles + ' articles au total, les ' + etat.d.articles.length + ' premiers par quantité sont chargés' : '') + '.</p>';
     }
 
@@ -83,7 +83,7 @@
       var ligne = function (lib, v, cls) { return '<tr' + (cls ? ' class="' + cls + '"' : '') + '><td>' + lib + '</td><td class="n">' + v + '</td></tr>'; };
       var sg = function (champ) { var x = App.valArt(a, champ); return x ? (x > 0 ? '+' : '') + App.fmt(x) : '–'; };
       return '<h2>' + esc(a.libelle || a.code) + ' <small>' + esc(a.code) + ' · ' + esc(a.entite) + '</small></h2><div class="grid g2"><div><table><thead><tr><th>Source</th><th class="n">Volume</th></tr></thead><tbody>' +
-        ligne('Réalisé ' + esc(etat.d.anneeReference || 'N-1'), App.fmt(App.valArt(a, 'n1'))) + ligne('Statistique (moyenne pondérée)', App.fmt(App.valArt(a, 'statistique'))) +
+        ligne('Réalisé ' + esc(etat.d.anneeReference || 'N-1'), App.fmt(App.valArt(a, 'n1'))) + ligne('Statistique (moyenne pondérée)', App.fmt(App.valArt(a, 'statistique'))) + ligne('Saisie des TC', a.tc === null ? 'pas encore saisie' : App.fmt(App.valArt(a, 'tc'))) +
         ligne('Événements', sg('evenements')) + ligne('Corrections', sg('correction')) + ligne('Substitutions et arrêts', sg('substitution')) +
         ligne('Retenue', App.fmt(App.valArt(a, 'retenue')), 'tot') + '</tbody></table></div><div><b>Saisies actives</b>' +
         (sais.length ? '<ul class="liste" style="margin-top:8px">' + sais.map(function (x) { return '<li>' + esc(x.id) + ' · ' + esc(x.texte) + (peutAnnuler ? ' <button class="btn petit" type="button" data-annuler="' + esc(x.id) + '" data-nature="' + x.nature + '">Annuler</button>' : '') + '</li>'; }).join('') + '</ul>' : '<p class="note">Aucune saisie sur cet article.</p>') + '</div></div>';
@@ -100,7 +100,7 @@
       }
       var peutArbitrer = droits.arbitrage && droits.correctionPrevision && ouverte && !d.version.verrouillee;
       var v = d.version;
-      c.innerHTML = '<h1>Prévision &amp; arbitrage</h1><p class="sub">Maille article. La correction s\'ajoute à la statistique ; chaque enregistrement crée une nouvelle version. Version courante : <b>' + esc(v.id) + '</b> ' + App.pill('brand', App.typeVersion(v.type), '●') + (v.verrouillee ? ' ' + App.pill('ok', 'Verrouillée', '■') : '') + '</p>' +
+      c.innerHTML = '<h1>Prévision &amp; arbitrage</h1><p class="sub">Maille article. La correction s\'ajoute à la quantité de départ (' + (App.etat.session.baseTc ? 'saisie des TC' : 'statistique') + ') ; chaque enregistrement crée une nouvelle version. Version courante : <b>' + esc(v.id) + '</b> ' + App.pill('brand', App.typeVersion(v.type), '●') + (v.verrouillee ? ' ' + App.pill('ok', 'Verrouillée', '■') : '') + '</p>' +
         '<div class="card"><div class="row" style="margin-bottom:10px"><div class="seg" role="group" aria-label="Forme de la correction"><button type="button" data-m="q" aria-pressed="' + (etat.mode === 'q') + '">Quantité</button><button type="button" data-m="p" aria-pressed="' + (etat.mode === 'p') + '">En %</button></div>' +
         '<label class="ctl" style="margin:0">Rechercher<input id="p-q" type="search" maxlength="60" value="' + esc(etat.q) + '" placeholder="code ou libellé"></label>' +
         '<label class="ligne" style="margin:0"><input type="checkbox" id="p-seul"' + (etat.seulement ? ' checked' : '') + '> Seulement les articles modifiés</label><div class="spacer"></div>' +

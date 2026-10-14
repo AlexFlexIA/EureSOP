@@ -59,7 +59,18 @@ var Controles = (function () {
       res.push({ niveau: 'ATTENTION', sujet: 'Modèle', detail: 'La structure attendue est la version ' + SOP_STRUCTURE_VERSION + ' du modèle. Si les classeurs ont été créés avec une version plus ancienne, réimportez les modèles actuels (Fichier > Importer > Remplacer la feuille de calcul garde le même ID).' });
     }
     if (!res.length) res.push({ niveau: 'OK', sujet: 'Mise en service', detail: 'Structure, campagne et accès conformes.' });
-    return res.concat(Histo.verifier(idCampagne));
+    if (!Number(campagne['Annee prevision'])) {
+      res.push({ niveau: 'ATTENTION', sujet: 'Campagne ' + idCampagne, detail: 'Annee prevision vide dans CAMPAGNES : le cadençage, la publication et les libellés d\'années en ont besoin.' });
+    }
+    var autres = [];
+    try {
+      autres = Sources.etat(acteur).sources.filter(function (x) { return x.nature !== 'HISTO_PAC' && x.etat === 'ERREUR'; }).map(function (x) {
+        return { niveau: 'ERREUR', sujet: 'Source ' + x.id, detail: x.detail };
+      });
+    } catch (e) {
+      autres = [{ niveau: 'ERREUR', sujet: 'Sources', detail: e && e.message ? e.message : 'Lecture impossible.' }];
+    }
+    return res.concat(Histo.verifier(idCampagne), autres);
   }
 
   return { run: run };

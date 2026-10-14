@@ -39,6 +39,7 @@ var API_ = {
         anneePrevision: Number(a.campagne['Annee prevision']) || 0,
         statut: norm(a.campagne.Statut)
       },
+      baseTc: norm(Params.reglages().BASE_ARBITRAGE) === 'TC',
       seuilEcart: (function () { try { return Dashboard.seuil(); } catch (e) { return 15; } })(),
       entites: (function () { try { return Histo.sources(txt(a.campagne['ID campagne'])).map(function (r) { return txt(r.Entite); }).filter(Boolean); } catch (e) { return []; } })(),
       campagnes: a.campagnes.map(function (c) { return { id: txt(c['ID campagne']), libelle: txt(c.Libelle) || txt(c['ID campagne']), type: norm(c.Type), statut: norm(c.Statut) }; }),
@@ -57,6 +58,7 @@ var API_ = {
   validerCoefficients: function (a, args) { return Cadencage.valider(a, args[0], args[1], args[2]); },
   republier: function (a, args) { return Publication.republier(a, args[0]); },
   stocks: function (a) { return Stocks.projeter(a); },
+  actualiser: function (a) { Auth.requireCap(a, 'consultation'); return Cache.actualiser(); },
   fiabiliteReelle: function (a) { return Previsions.fiabiliteReelle(a); },
   journal: function (a, args) { return Journal.lire(a, args[0]); },
   controles: function (a) { return Controles.run(a); },

@@ -292,8 +292,8 @@ var Ajustements = (function () {
   }
 
   // Effets des saisies actives sur la prévision statistique.
-  // base : { 'ENTITE|code': { entite, code, stat } }. Les pourcentages s'appliquent à la statistique de l'article.
-  // Les substitutions se calculent toutes sur la statistique de départ : pas de chaînage A vers B vers C.
+  // base : { 'ENTITE|code': { entite, code, base } } où base est la quantité de départ (statistique, ou saisie des TC si BASE_ARBITRAGE = TC).
+  // Les pourcentages s'appliquent à cette quantité. Les substitutions se calculent toutes sur la quantité de départ : pas de chaînage A vers B vers C.
   function effets(acteur, base) {
     var ctx = Versions.contexte(acteur);
     var anneePrevue = Number(acteur.campagne['Annee prevision']) || 0;
@@ -303,7 +303,7 @@ var Ajustements = (function () {
       var k = cle(entite, code);
       return res.cles[k] = res.cles[k] || { entite: entite, code: code, evenements: 0, correction: 0, substitution: 0 };
     }
-    function statDe(entite, code) { var b = base[cle(entite, code)]; return b ? b.stat : 0; }
+    function statDe(entite, code) { var b = base[cle(entite, code)]; return b ? b.base : 0; }
 
     Store.read(ctx.idSortie, 'EVENEMENTS_COMMERCE').rows.forEach(function (r) {
       if (!yes(r.Actif) || !txt(r['Code produit']) || !txt(r.Entite)) return;
@@ -339,14 +339,14 @@ var Ajustements = (function () {
       var appliquee = false;
       cibles.forEach(function (e) {
         var b = base[cle(e, ancien)];
-        if (!b || !(b.stat > 0)) return;
-        var transfert = b.stat * taux / 100;
+        if (!b || !(b.base > 0)) return;
+        var transfert = b.base * taux / 100;
         fiche(b.entite, ancien).substitution -= transfert;
         if (nouveau) fiche(b.entite, nouveau).substitution += transfert;
         appliquee = true;
       });
       if (appliquee) res.nbSubstitutions++;
-      else res.avertissements.push('Substitution ' + txt(r['ID substitution']) + ' : l\'article ' + ancien + ' n\'a pas de prévision statistique, rien à reporter.');
+      else res.avertissements.push('Substitution ' + txt(r['ID substitution']) + ' : l\'article ' + ancien + ' n\'a pas de prévision de départ, rien à reporter.');
     });
     return res;
   }

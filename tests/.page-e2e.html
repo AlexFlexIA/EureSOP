@@ -149,6 +149,7 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
         </div>
       </div>
       <div class="spacer"></div>
+      <button class="btn petit" id="actualiser" type="button" title="Relire les fichiers sources (l'historique est gardé 10 minutes en mémoire)">↻ Actualiser</button>
       <span id="entete-statut" class="pill p-info"></span>
       <div class="user"><b id="entete-utilisateur"></b><span id="entete-roles"></span></div>
     </header>
@@ -181,12 +182,13 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
   App.valArt = function (a, champ) {
     var u = App.etat.unite;
     if (champ === 'n1') return u === 'Q' ? a.n1 : (u === 'H' ? a.n1ha : a.n1eur);
+    if (a[champ] === null || a[champ] === undefined) return null;
     return a[champ] * (u === 'Q' ? 1 : (u === 'H' ? a.rh : a.re));
   };
   // Totaux de l'entité filtrée (ou de toutes), dans l'unité choisie.
   App.totaux = function (liste) {
     var ent = App.etat.entite, cle = App.UNITES[App.etat.unite].cle;
-    var t = { articles: 0, n1: 0, statistique: 0, evenements: 0, correction: 0, substitution: 0, retenue: 0 };
+    var t = { articles: 0, n1: 0, statistique: 0, tc: 0, evenements: 0, correction: 0, substitution: 0, retenue: 0 };
     (liste || []).forEach(function (x) {
       if (ent && x.entite !== ent) return;
       t.articles += x.articles;
@@ -367,6 +369,14 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
       App.invalider(); App.demarrer();
     };
     $('#ent').onchange = function () { App.etat.entite = $('#ent').value; App.surFiltre(); };
+    $('#actualiser').onclick = function () {
+      var b = $('#actualiser'); b.disabled = true;
+      App.appel('actualiser', []).then(function (r) {
+        b.disabled = false;
+        App.toast(r.ok ? 'Fichiers sources relus.' : r.message);
+        App.invalider(); App.afficher(App.etat.ecran);
+      });
+    };
     App.$$('#unites button[data-u]').forEach(function (b) {
       b.setAttribute('aria-pressed', b.getAttribute('data-u') === App.etat.unite ? 'true' : 'false');
       b.onclick = function () {
@@ -376,6 +386,12 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
       };
     });
   }
+
+  // Une erreur de rendu ne doit pas figer l'écran : on l'affiche et on garde le menu.
+  window.addEventListener('error', function (e) {
+    var c = $('#contenu');
+    if (c && !$('#app').hidden) c.innerHTML = '<div class="card"><h2>Affichage impossible</h2><p>Une erreur d\'affichage est survenue. Rechargez la page ; si elle persiste, contactez l\'administrateur.</p><p class="note">' + esc(e.message || '') + '</p></div>';
+  });
 
   App.demarrer = function () {
     $('#chargement').hidden = false; $('#erreur').hidden = true; $('#app').hidden = true;
@@ -404,7 +420,7 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
   'use strict';
   var App = window.App, esc = App.esc;
 
-  var COULEURS = { n1: '#8A8A8A', stat: '#BAD264', ret: '#514F21' };
+  var COULEURS = { n1: '#8A8A8A', stat: '#84BD66', ret: '#514F21' };
 
   var NOMS_MOIS = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
   var libMois = function (m) { var p = m.split('-'); return NOMS_MOIS[Number(p[1]) - 1] + ' ' + p[0]; };
@@ -437,6 +453,7 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
     }
     var kpis = [
       ['Prévision retenue' + (prevue ? ' ' + prevue : ''), App.fmt(t.retenue), d.version ? App.pill(t.retenue >= t.n1 ? 'ok' : 'warn', 'vs ' + ref + ' ' + (t.n1 ? App.pct((t.retenue / t.n1 - 1) * 100) : '—'), t.retenue >= t.n1 ? '▲' : '▼') : App.pill('info', 'Pas encore calculée', 'ℹ')],
+      ['Prévision des TC', d.tc && d.tc.couverture ? App.fmt(t.tc) : 'Non connectée', d.tc && d.tc.couverture ? App.pill(d.tc.couverture.tcAyantSaisi < d.tc.couverture.tc ? 'warn' : 'ok', d.tc.couverture.tcAyantSaisi + ' TC sur ' + d.tc.couverture.tc + ' ont saisi', d.tc.couverture.tcAyantSaisi < d.tc.couverture.tc ? '⚠' : '✓') : (d.tc && d.tc.erreur ? App.pill('bad', 'Fichier illisible', '✖') : App.pill('info', 'Source PREV_TC à déclarer', 'ℹ'))],
       ['Budget', 'Non connecté', App.pill('info', 'Source BUDGET à déclarer', 'ℹ')],
       kpiFiab,
       ['Alertes ouvertes', String(ouvertes), (n.ERREUR ? App.pill('bad', n.ERREUR + ' erreur(s)', '✖') + ' ' : '') + (n.ATTENTION ? App.pill('warn', n.ATTENTION + ' à vérifier', '⚠') : (ouvertes ? '' : App.pill('ok', 'Rien à signaler', '✓')))]
@@ -448,6 +465,7 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
     var series = [
       { nom: 'Réalisé ' + ref, couleur: COULEURS.n1, valeurs: lignes.map(function (x) { return x[cle].n1; }) },
       { nom: 'Statistique', couleur: COULEURS.stat, valeurs: lignes.map(function (x) { return x[cle].statistique; }) },
+      { nom: 'Prévision des TC', couleur: '#BAD264', valeurs: lignes.map(function (x) { return x[cle].tc; }) },
       { nom: 'Retenue', couleur: COULEURS.ret, valeurs: lignes.map(function (x) { return x[cle].retenue; }) }
     ];
     var graphique = lignes.length ? App.barres(lignes.map(function (x) { return x.entite; }), series) + App.legende(series) : '<div class="vide">Pas de prévision à afficher.</div>';
@@ -463,12 +481,12 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
       if (m.n1 && Math.abs(m.retenue / m.n1 - 1) * 100 > (s.seuilEcart || 15)) return App.pill('warn', 'Écart ' + ref + ' élevé', '⚠');
       return App.pill('ok', 'Dans la cible', '✓');
     };
-    var tableau = '<thead><tr><th>Entité</th><th class="n">Articles</th><th class="n">Réalisé ' + esc(ref) + '</th><th class="n">Statistique</th><th class="n">Retenue</th><th class="n">vs ' + esc(ref) + '</th><th>Lecture</th></tr></thead><tbody>' +
+    var tableau = '<thead><tr><th>Entité</th><th class="n">Articles</th><th class="n">Réalisé ' + esc(ref) + '</th><th class="n">Statistique</th><th class="n">Prév. TC</th><th class="n">Retenue</th><th class="n">vs ' + esc(ref) + '</th><th>Lecture</th></tr></thead><tbody>' +
       lignes.map(function (x) {
         var m = x[cle];
-        return '<tr><td><b>' + esc(x.entite) + '</b></td><td class="n">' + App.n0(x.articles) + '</td><td class="n">' + App.fmt(m.n1) + '</td><td class="n">' + App.fmt(m.statistique) + '</td><td class="n"><b>' + App.fmt(m.retenue) + '</b></td><td class="n">' + (m.n1 ? App.pct((m.retenue / m.n1 - 1) * 100) : '—') + '</td><td>' + lecture(x) + '</td></tr>';
+        return '<tr><td><b>' + esc(x.entite) + '</b></td><td class="n">' + App.n0(x.articles) + '</td><td class="n">' + App.fmt(m.n1) + '</td><td class="n">' + App.fmt(m.statistique) + '</td><td class="n">' + (d.tc && d.tc.couverture ? App.fmt(m.tc) : '–') + '</td><td class="n"><b>' + App.fmt(m.retenue) + '</b></td><td class="n">' + (m.n1 ? App.pct((m.retenue / m.n1 - 1) * 100) : '—') + '</td><td>' + lecture(x) + '</td></tr>';
       }).join('') +
-      (lignes.length > 1 ? '<tr class="tot"><td>Total</td><td class="n">' + App.n0(t.articles) + '</td><td class="n">' + App.fmt(t.n1) + '</td><td class="n">' + App.fmt(t.statistique) + '</td><td class="n">' + App.fmt(t.retenue) + '</td><td class="n">' + (t.n1 ? App.pct((t.retenue / t.n1 - 1) * 100) : '—') + '</td><td></td></tr>' : '') + '</tbody>';
+      (lignes.length > 1 ? '<tr class="tot"><td>Total</td><td class="n">' + App.n0(t.articles) + '</td><td class="n">' + App.fmt(t.n1) + '</td><td class="n">' + App.fmt(t.statistique) + '</td><td class="n">' + (d.tc && d.tc.couverture ? App.fmt(t.tc) : '–') + '</td><td class="n">' + App.fmt(t.retenue) + '</td><td class="n">' + (t.n1 ? App.pct((t.retenue / t.n1 - 1) * 100) : '—') + '</td><td></td></tr>' : '') + '</tbody>';
 
     var tl = d.echeances.length ? '<div class="tl">' + d.echeances.map(function (e) {
       var dates = e.debut ? (e.debut + (e.fin ? ' → ' + e.fin : '')) : '';
@@ -532,16 +550,16 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
     function nouvelle(a) {
       var m = etat.modif[cle(a)];
       if (!m) return appliquee(a);
-      if (m.pourcent !== undefined) return a.statistique * m.pourcent / 100;
+      if (m.pourcent !== undefined) return a.depart * m.pourcent / 100;
       return m.quantite;
     }
-    function retenueLive(a) { return Math.max(0, a.statistique + a.evenements + a.substitution + nouvelle(a)); }
+    function retenueLive(a) { return Math.max(0, a.depart + a.evenements + a.substitution + nouvelle(a)); }
     var ratio = function (a) { return App.etat.unite === 'Q' ? 1 : (App.etat.unite === 'H' ? a.rh : a.re); };
 
     function valeurCellule(a) {
       var q = nouvelle(a);
       if (!q && !etat.modif[cle(a)]) return '';
-      if (etat.mode === 'p') return a.statistique ? +(q / a.statistique * 100).toFixed(1) : '';
+      if (etat.mode === 'p') return a.depart ? +(q / a.depart * 100).toFixed(1) : '';
       return +(q * ratio(a)).toFixed(App.etat.unite === 'Q' ? 1 : 0);
     }
 
@@ -567,18 +585,18 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
       var peut = (droits.arbitrage && droits.correctionPrevision) && ouverte && !etat.d.version.verrouillee;
       var corps = lignes.slice(0, 200).map(function (a) {
         var k = cle(a), v = valeurCellule(a);
-        var inactif = !peut || (etat.mode === 'p' ? !a.statistique : !ratio(a));
+        var inactif = !peut || (etat.mode === 'p' ? !a.depart : !ratio(a));
         var l = retenueLive(a);
         var n1 = App.valArt(a, 'n1');
         var ret = l * (App.etat.unite === 'Q' ? 1 : ratio(a));
         var cel = function (champ) { var x = App.valArt(a, champ); return '<td class="n">' + (x ? (x > 0 ? '+' : '') + App.fmt(x) : '–') + '</td>'; };
         return '<tr class="cliquable' + (etat.sel === k ? ' sel' : '') + '" data-k="' + esc(k) + '"><td><b>' + esc(a.libelle || a.code) + '</b><br><span class="note">' + esc(a.code) + '</span></td><td>' + esc(a.entite) + '</td>' +
-          '<td class="n">' + App.fmt(n1) + '</td><td class="n">' + App.fmt(App.valArt(a, 'statistique')) + '</td>' + cel('evenements') + cel('substitution') +
-          '<td class="n"><input class="cell' + (etat.modif[k] ? ' changed' : '') + '" type="text" inputmode="decimal" value="' + esc(v) + '" placeholder="0" data-k="' + esc(k) + '"' + (inactif ? ' disabled title="Correction impossible ici (droits, unité sans coefficient, ou statistique nulle)"' : '') + ' aria-label="Correction ' + esc(a.libelle || a.code) + '"></td>' +
+          '<td class="n">' + App.fmt(n1) + '</td><td class="n">' + App.fmt(App.valArt(a, 'statistique')) + '</td><td class="n">' + (a.tc === null ? '–' : App.fmt(App.valArt(a, 'tc'))) + '</td>' + cel('evenements') + cel('substitution') +
+          '<td class="n"><input class="cell' + (etat.modif[k] ? ' changed' : '') + '" type="text" inputmode="decimal" value="' + esc(v) + '" placeholder="0" data-k="' + esc(k) + '"' + (inactif ? ' disabled title="Correction impossible ici (droits, unité sans coefficient, ou quantité de départ nulle)"' : '') + ' aria-label="Correction ' + esc(a.libelle || a.code) + '"></td>' +
           '<td class="n"><b>' + App.fmt(ret) + '</b></td><td class="n">' + (n1 ? App.variation(ret, n1) : '—') + '</td><td>' + statut(a) + '</td></tr>';
       }).join('');
       var unite = etat.mode === 'p' ? '%' : App.UNITES[App.etat.unite].lbl.toLowerCase();
-      return '<table><thead><tr><th>Article</th><th>Entité</th><th class="n">Réalisé ' + esc(ref) + '</th><th class="n">Statistique</th><th class="n">Événements</th><th class="n">Substitutions</th><th class="n">Correction (' + esc(unite) + ')</th><th class="n">Retenue</th><th class="n">vs ' + esc(ref) + '</th><th>Statut</th></tr></thead><tbody>' + (corps || '<tr><td colspan="10" class="note">Aucun article ne correspond.</td></tr>') + '</tbody></table>' +
+      return '<table><thead><tr><th>Article</th><th>Entité</th><th class="n">Réalisé ' + esc(ref) + '</th><th class="n">Statistique</th><th class="n">Prév. TC</th><th class="n">Événements</th><th class="n">Substitutions</th><th class="n">Correction (' + esc(unite) + ')</th><th class="n">Retenue</th><th class="n">vs ' + esc(ref) + '</th><th>Statut</th></tr></thead><tbody>' + (corps || '<tr><td colspan="11" class="note">Aucun article ne correspond.</td></tr>') + '</tbody></table>' +
         '<p class="note">' + lignes.length + ' article(s)' + (lignes.length > 200 ? ', 200 affichés : affinez la recherche' : '') + (etat.d.tronque ? ' · ' + etat.d.nbArticles + ' articles au total, les ' + etat.d.articles.length + ' premiers par quantité sont chargés' : '') + '.</p>';
     }
 
@@ -599,7 +617,7 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
       var ligne = function (lib, v, cls) { return '<tr' + (cls ? ' class="' + cls + '"' : '') + '><td>' + lib + '</td><td class="n">' + v + '</td></tr>'; };
       var sg = function (champ) { var x = App.valArt(a, champ); return x ? (x > 0 ? '+' : '') + App.fmt(x) : '–'; };
       return '<h2>' + esc(a.libelle || a.code) + ' <small>' + esc(a.code) + ' · ' + esc(a.entite) + '</small></h2><div class="grid g2"><div><table><thead><tr><th>Source</th><th class="n">Volume</th></tr></thead><tbody>' +
-        ligne('Réalisé ' + esc(etat.d.anneeReference || 'N-1'), App.fmt(App.valArt(a, 'n1'))) + ligne('Statistique (moyenne pondérée)', App.fmt(App.valArt(a, 'statistique'))) +
+        ligne('Réalisé ' + esc(etat.d.anneeReference || 'N-1'), App.fmt(App.valArt(a, 'n1'))) + ligne('Statistique (moyenne pondérée)', App.fmt(App.valArt(a, 'statistique'))) + ligne('Saisie des TC', a.tc === null ? 'pas encore saisie' : App.fmt(App.valArt(a, 'tc'))) +
         ligne('Événements', sg('evenements')) + ligne('Corrections', sg('correction')) + ligne('Substitutions et arrêts', sg('substitution')) +
         ligne('Retenue', App.fmt(App.valArt(a, 'retenue')), 'tot') + '</tbody></table></div><div><b>Saisies actives</b>' +
         (sais.length ? '<ul class="liste" style="margin-top:8px">' + sais.map(function (x) { return '<li>' + esc(x.id) + ' · ' + esc(x.texte) + (peutAnnuler ? ' <button class="btn petit" type="button" data-annuler="' + esc(x.id) + '" data-nature="' + x.nature + '">Annuler</button>' : '') + '</li>'; }).join('') + '</ul>' : '<p class="note">Aucune saisie sur cet article.</p>') + '</div></div>';
@@ -616,7 +634,7 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
       }
       var peutArbitrer = droits.arbitrage && droits.correctionPrevision && ouverte && !d.version.verrouillee;
       var v = d.version;
-      c.innerHTML = '<h1>Prévision &amp; arbitrage</h1><p class="sub">Maille article. La correction s\'ajoute à la statistique ; chaque enregistrement crée une nouvelle version. Version courante : <b>' + esc(v.id) + '</b> ' + App.pill('brand', App.typeVersion(v.type), '●') + (v.verrouillee ? ' ' + App.pill('ok', 'Verrouillée', '■') : '') + '</p>' +
+      c.innerHTML = '<h1>Prévision &amp; arbitrage</h1><p class="sub">Maille article. La correction s\'ajoute à la quantité de départ (' + (App.etat.session.baseTc ? 'saisie des TC' : 'statistique') + ') ; chaque enregistrement crée une nouvelle version. Version courante : <b>' + esc(v.id) + '</b> ' + App.pill('brand', App.typeVersion(v.type), '●') + (v.verrouillee ? ' ' + App.pill('ok', 'Verrouillée', '■') : '') + '</p>' +
         '<div class="card"><div class="row" style="margin-bottom:10px"><div class="seg" role="group" aria-label="Forme de la correction"><button type="button" data-m="q" aria-pressed="' + (etat.mode === 'q') + '">Quantité</button><button type="button" data-m="p" aria-pressed="' + (etat.mode === 'p') + '">En %</button></div>' +
         '<label class="ctl" style="margin:0">Rechercher<input id="p-q" type="search" maxlength="60" value="' + esc(etat.q) + '" placeholder="code ou libellé"></label>' +
         '<label class="ligne" style="margin:0"><input type="checkbox" id="p-seul"' + (etat.seulement ? ' checked' : '') + '> Seulement les articles modifiés</label><div class="spacer"></div>' +

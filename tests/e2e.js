@@ -26,7 +26,10 @@ function page() {
   env.ajouterClasseur('FICHIER_STOCKS_0000000001', { Stocks: [['Date stock', 'Plateforme', 'Code produit', 'Entite', 'Stock'],
     ['2027-01-04', 'GLOMEL', '1109939', 'Coop EUREDEN', 5000], ['2027-01-04', 'GRUEL', '1109939', 'Coop EUREDEN', 3000], ['2027-01-04', 'GLOMEL', '2200001', 'NEGOCE ONA', 100]] });
   env.ajouterClasseur('FICHIER_COMMANDES_00000001', { Commandes: [['Code produit', 'Code point', 'Date limite livraison', 'Quantite reste a livrer', 'Code fournisseur'], ['1109939', 'GLOMEL', '2027-02-08', 4000, 'F1']] });
+  env.ajouterClasseur('FICHIER_EUREPREV_TC_0000001', { DONNEES: [['N° TC', 'Code technicien Appro/DTD', 'Code produit long Triskalia', '_Canal de distribution', 'Saisie pour prévisions Coop (Oui ou Non)', 'PREV 2027', 'PREV 2027 en QTE', 'PREV 2027 en SURFACE', 'Etat saisie'],
+    [1, 102441, 1109939, 'Coop EUREDEN', 'OUI', '', 9000, '', 'SAISI'], [2, 199405, 1109939, 'Coop EUREDEN', 'OUI', '', 8000.5, '', 'SAISI'], [3, 111111, 1109939, 'Coop EUREDEN', 'OUI', '', '', '', 'NON_RENSEIGNE']] });
   env.semer('PARAM_FICHIER_TEST_00001', 'SOURCES', [
+    { 'ID source': 'TC', Nature: 'PREV_TC', 'ID fichier': 'FICHIER_EUREPREV_TC_0000001', Onglet: 'DONNEES', 'Actif import': 'OUI' },
     { 'ID source': 'STK', Nature: 'STOCKS', 'ID fichier': 'FICHIER_STOCKS_0000000001', Onglet: 'Stocks', 'Actif import': 'OUI' },
     { 'ID source': 'CMD', Nature: 'COMMANDES_FOURN', 'ID fichier': 'FICHIER_COMMANDES_00000001', Onglet: 'Commandes', 'Actif import': 'OUI' }]);
   const erreurs = [];
@@ -72,6 +75,7 @@ function page() {
       await p.click('#dlg-ok');
       await p.waitForSelector('#p-table table');
       assert.ok((await texte('#p-table')).includes('D.A.P. 35K'));
+      assert.ok(/17\s001/.test(await texte('#p-table')), 'la saisie des TC doit apparaître dans le tableau');
       assert.strictEqual(env.lignes('SORTIE1', 'VERSIONS').length, 1);
     });
     await etape('prévision : correction dans le tableau puis reprévision', async () => {
@@ -104,6 +108,7 @@ function page() {
       await p.waitForSelector('main :text("Prévision mensuelle")', { timeout: 3000 }).catch(() => {}); // seulement si un cadençage existe
       const quantite = await texte('main');
       assert.ok(/prévision retenue/i.test(quantite));
+      assert.ok(/2 TC sur 3 ont saisi/.test(quantite), 'la couverture de la saisie doit apparaître');
       await p.click('#unites [data-u=E]');
       const valeur = await texte('main');
       assert.ok(/ €/.test(valeur));
@@ -255,6 +260,42 @@ function page() {
       await p.waitForSelector('main table tbody tr');
       assert.ok(/Historique des ventes par PAC/.test(await texte('main')));
       assert.ok(/Connectée/.test(await texte('main')));
+    });
+    await etape('actualiser : relecture des fichiers sources', async () => {
+      await p.click('#menu [data-v=dashboard]');
+      await p.waitForSelector('.kpi');
+      await p.click('#actualiser');
+      await p.waitForFunction(() => /Fichiers sources relus/.test(document.body.innerText));
+      await p.waitForSelector('.kpi');
+    });
+    await etape('TC : écrans limités à son périmètre, aucune action de pilotage', async () => {
+      env.moi('tc.ok@eureden.com');
+      await p.reload();
+      await p.waitForSelector('#menu button');
+      assert.strictEqual(await p.locator('#menu [data-v=controles]').count(), 0);
+      await p.click('#menu [data-v=prevision]');
+      await p.waitForSelector('#p-table table');
+      assert.strictEqual(await p.locator('#p-save').count(), 0);
+      assert.strictEqual(await p.locator('#p-stat').count(), 0);
+      await p.click('#menu [data-v=historique]');
+      await p.waitForSelector('#h-table table');
+      assert.strictEqual(await p.locator('#h-arret').count(), 0);
+      assert.strictEqual(await p.locator('#h-corr').count(), 0);
+      assert.ok(!/NEGOCE ONA/.test(await texte('#h-table')), 'un TC ne voit pas les autres entités');
+      await p.click('#menu [data-v=versions]');
+      await p.waitForSelector('.vt li');
+      assert.strictEqual(await p.locator('[data-valider]').count(), 0);
+      assert.strictEqual(await p.locator('#x-jrn').count(), 0);
+    });
+    await etape('utilisateur sans accès : message clair et nouvelle tentative', async () => {
+      env.moi('inconnu@eureden.com');
+      await p.reload();
+      await p.waitForSelector('#erreur:not([hidden])');
+      assert.ok(/Aucun accès actif/.test(await texte('#erreur-message')));
+      assert.ok(/ACCES_REFUSE/.test(await texte('#erreur-code')));
+      env.moi('admin@eureden.com');
+      await p.click('#erreur-retour');
+      await p.waitForSelector('#menu button');
     });
     assert.deepStrictEqual(erreurs, [], 'erreurs JavaScript dans la page : ' + erreurs.join(' | '));
   } catch (e) {

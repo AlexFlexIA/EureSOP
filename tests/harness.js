@@ -6,7 +6,7 @@ const path = require('path');
 const vm = require('vm');
 
 const RACINE = path.resolve(__dirname, '..');
-const FICHIERS_CODE = ['Structure.gs', 'Config.gs', 'Store.gs', 'Params.gs', 'Auth.gs', 'Journal.gs', 'Versions.gs', 'Histo.gs', 'Ajustements.gs', 'Cadencage.gs', 'Stocks.gs', 'Publication.gs', 'Previsions.gs', 'Dashboard.gs', 'Sources.gs', 'Controles.gs', 'Setup.gs', 'Code.gs'];
+const FICHIERS_CODE = ['Structure.gs', 'Config.gs', 'Cache.gs', 'Store.gs', 'Params.gs', 'Auth.gs', 'Journal.gs', 'Versions.gs', 'Histo.gs', 'Ajustements.gs', 'Cadencage.gs', 'PrevTC.gs', 'Stocks.gs', 'Publication.gs', 'Previsions.gs', 'Dashboard.gs', 'Sources.gs', 'Controles.gs', 'Setup.gs', 'Code.gs'];
 
 function enTetes(dossier, tab) {
   const ligne = fs.readFileSync(path.join(RACINE, 'modeles', dossier, tab + '.csv'), 'utf8').split('\n')[0].replace(/\r$/, '');
@@ -57,7 +57,8 @@ function creerClasseur(dossier, groupe) {
 
 function creerEnv() {
   const props = {};
-  const env = { utilisateur: '', proprietaire: 'admin@eureden.com', classeurs: {}, verrouAttente: 0 };
+  const cache = {};
+  const env = { utilisateur: '', proprietaire: 'admin@eureden.com', classeurs: {}, ouvertures: {}, verrouAttente: 0 };
   const sandbox = {
     console: { log() {}, error() {} },
     JSON, Object, Array, String, Number, Math, Date, Error,
@@ -65,7 +66,14 @@ function creerEnv() {
     PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => (k in props ? props[k] : null), setProperty: (k, v) => { props[k] = v; } }) },
     LockService: { getScriptLock: () => ({ waitLock() { env.verrouAttente++; }, releaseLock() { env.verrouAttente--; } }) },
     Utilities: { formatDate: () => new Date().toISOString().slice(0, 19) },
-    SpreadsheetApp: { openById: (id) => { if (!env.classeurs[id]) throw new Error('Classeur inconnu ' + id); return env.classeurs[id]; } },
+    SpreadsheetApp: { openById: (id) => { if (!env.classeurs[id]) throw new Error('Classeur inconnu ' + id); env.ouvertures[id] = (env.ouvertures[id] || 0) + 1; return env.classeurs[id]; } },
+    CacheService: { getScriptCache: () => ({
+      get: (k) => (k in cache ? cache[k] : null),
+      getAll: (ks) => { const o = {}; ks.forEach((k) => { if (k in cache) o[k] = cache[k]; }); return o; },
+      put: (k, v) => { if (Buffer.byteLength(String(v)) > 100 * 1024) throw new Error('Argument too large'); cache[k] = String(v); },
+      putAll: (o) => { Object.keys(o).forEach((k) => { if (Buffer.byteLength(String(o[k])) > 100 * 1024) throw new Error('Argument too large'); cache[k] = String(o[k]); }); },
+      remove: (k) => { delete cache[k]; }
+    }) },
     HtmlService: {}
   };
   const ctx = vm.createContext(sandbox);
@@ -76,6 +84,8 @@ function creerEnv() {
   // Les objets sont recopiés pour sortir du contexte vm (sinon deepStrictEqual compare des prototypes différents).
   env.run = (expr) => { const v = vm.runInContext(expr, ctx); return v && typeof v === 'object' ? JSON.parse(JSON.stringify(v)) : v; };
   env.props = props;
+  env.cache = cache;
+  env.nouvelleExecution = () => env.run('Store.reset()');
   env.classeurs.PARAM_FICHIER_TEST_00001 = creerClasseur('PARAMETRES_SOP', S.PARAMETRES_SOP);
   env.classeurs.SORTIE1 = creerClasseur('SORTIE_SOP', S.SORTIE_SOP);
   // Les en-têtes des modèles CSV doivent correspondre à la structure du code.

@@ -3,7 +3,7 @@
   'use strict';
   var App = window.App, esc = App.esc;
 
-  var COULEURS = { n1: '#8A8A8A', stat: '#BAD264', ret: '#514F21' };
+  var COULEURS = { n1: '#8A8A8A', stat: '#84BD66', ret: '#514F21' };
 
   var NOMS_MOIS = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
   var libMois = function (m) { var p = m.split('-'); return NOMS_MOIS[Number(p[1]) - 1] + ' ' + p[0]; };
@@ -36,6 +36,7 @@
     }
     var kpis = [
       ['Prévision retenue' + (prevue ? ' ' + prevue : ''), App.fmt(t.retenue), d.version ? App.pill(t.retenue >= t.n1 ? 'ok' : 'warn', 'vs ' + ref + ' ' + (t.n1 ? App.pct((t.retenue / t.n1 - 1) * 100) : '—'), t.retenue >= t.n1 ? '▲' : '▼') : App.pill('info', 'Pas encore calculée', 'ℹ')],
+      ['Prévision des TC', d.tc && d.tc.couverture ? App.fmt(t.tc) : 'Non connectée', d.tc && d.tc.couverture ? App.pill(d.tc.couverture.tcAyantSaisi < d.tc.couverture.tc ? 'warn' : 'ok', d.tc.couverture.tcAyantSaisi + ' TC sur ' + d.tc.couverture.tc + ' ont saisi', d.tc.couverture.tcAyantSaisi < d.tc.couverture.tc ? '⚠' : '✓') : (d.tc && d.tc.erreur ? App.pill('bad', 'Fichier illisible', '✖') : App.pill('info', 'Source PREV_TC à déclarer', 'ℹ'))],
       ['Budget', 'Non connecté', App.pill('info', 'Source BUDGET à déclarer', 'ℹ')],
       kpiFiab,
       ['Alertes ouvertes', String(ouvertes), (n.ERREUR ? App.pill('bad', n.ERREUR + ' erreur(s)', '✖') + ' ' : '') + (n.ATTENTION ? App.pill('warn', n.ATTENTION + ' à vérifier', '⚠') : (ouvertes ? '' : App.pill('ok', 'Rien à signaler', '✓')))]
@@ -47,6 +48,7 @@
     var series = [
       { nom: 'Réalisé ' + ref, couleur: COULEURS.n1, valeurs: lignes.map(function (x) { return x[cle].n1; }) },
       { nom: 'Statistique', couleur: COULEURS.stat, valeurs: lignes.map(function (x) { return x[cle].statistique; }) },
+      { nom: 'Prévision des TC', couleur: '#BAD264', valeurs: lignes.map(function (x) { return x[cle].tc; }) },
       { nom: 'Retenue', couleur: COULEURS.ret, valeurs: lignes.map(function (x) { return x[cle].retenue; }) }
     ];
     var graphique = lignes.length ? App.barres(lignes.map(function (x) { return x.entite; }), series) + App.legende(series) : '<div class="vide">Pas de prévision à afficher.</div>';
@@ -62,12 +64,12 @@
       if (m.n1 && Math.abs(m.retenue / m.n1 - 1) * 100 > (s.seuilEcart || 15)) return App.pill('warn', 'Écart ' + ref + ' élevé', '⚠');
       return App.pill('ok', 'Dans la cible', '✓');
     };
-    var tableau = '<thead><tr><th>Entité</th><th class="n">Articles</th><th class="n">Réalisé ' + esc(ref) + '</th><th class="n">Statistique</th><th class="n">Retenue</th><th class="n">vs ' + esc(ref) + '</th><th>Lecture</th></tr></thead><tbody>' +
+    var tableau = '<thead><tr><th>Entité</th><th class="n">Articles</th><th class="n">Réalisé ' + esc(ref) + '</th><th class="n">Statistique</th><th class="n">Prév. TC</th><th class="n">Retenue</th><th class="n">vs ' + esc(ref) + '</th><th>Lecture</th></tr></thead><tbody>' +
       lignes.map(function (x) {
         var m = x[cle];
-        return '<tr><td><b>' + esc(x.entite) + '</b></td><td class="n">' + App.n0(x.articles) + '</td><td class="n">' + App.fmt(m.n1) + '</td><td class="n">' + App.fmt(m.statistique) + '</td><td class="n"><b>' + App.fmt(m.retenue) + '</b></td><td class="n">' + (m.n1 ? App.pct((m.retenue / m.n1 - 1) * 100) : '—') + '</td><td>' + lecture(x) + '</td></tr>';
+        return '<tr><td><b>' + esc(x.entite) + '</b></td><td class="n">' + App.n0(x.articles) + '</td><td class="n">' + App.fmt(m.n1) + '</td><td class="n">' + App.fmt(m.statistique) + '</td><td class="n">' + (d.tc && d.tc.couverture ? App.fmt(m.tc) : '–') + '</td><td class="n"><b>' + App.fmt(m.retenue) + '</b></td><td class="n">' + (m.n1 ? App.pct((m.retenue / m.n1 - 1) * 100) : '—') + '</td><td>' + lecture(x) + '</td></tr>';
       }).join('') +
-      (lignes.length > 1 ? '<tr class="tot"><td>Total</td><td class="n">' + App.n0(t.articles) + '</td><td class="n">' + App.fmt(t.n1) + '</td><td class="n">' + App.fmt(t.statistique) + '</td><td class="n">' + App.fmt(t.retenue) + '</td><td class="n">' + (t.n1 ? App.pct((t.retenue / t.n1 - 1) * 100) : '—') + '</td><td></td></tr>' : '') + '</tbody>';
+      (lignes.length > 1 ? '<tr class="tot"><td>Total</td><td class="n">' + App.n0(t.articles) + '</td><td class="n">' + App.fmt(t.n1) + '</td><td class="n">' + App.fmt(t.statistique) + '</td><td class="n">' + (d.tc && d.tc.couverture ? App.fmt(t.tc) : '–') + '</td><td class="n">' + App.fmt(t.retenue) + '</td><td class="n">' + (t.n1 ? App.pct((t.retenue / t.n1 - 1) * 100) : '—') + '</td><td></td></tr>' : '') + '</tbody>';
 
     var tl = d.echeances.length ? '<div class="tl">' + d.echeances.map(function (e) {
       var dates = e.debut ? (e.debut + (e.fin ? ' → ' + e.fin : '')) : '';

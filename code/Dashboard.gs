@@ -35,7 +35,7 @@ var Dashboard = (function () {
     });
   }
 
-  function alertes(acteur, d) {
+  function alertes(acteur, d, tc) {
     var res = [];
     var seuil = seuilEcart();
     if (!d.version) {
@@ -64,10 +64,21 @@ var Dashboard = (function () {
         res.push({ niveau: 'ATTENTION', titre: 'Écart vs ' + (d.anneeReference || 'N-1') + ' > ' + seuil + ' %', detail: (a.libelle || a.code) + ' (' + a.entite + ') : ' + (p > 0 ? '+' : '') + p + ' % (quantité retenue).' });
       });
       if (ecarts.length > 5) res.push({ niveau: 'INFO', titre: 'Autres écarts', detail: (ecarts.length - 5) + ' autre(s) article(s) dépassent aussi le seuil de ' + seuil + ' %.' });
+      var tcArt = d.articles.filter(function (a) { return a.tc !== null && a.tc !== undefined && (a.statistique > 0 || a.tc > 0) && Math.abs(a.tc - a.statistique) > 0 && (a.statistique > 0 ? Math.abs(a.tc / a.statistique - 1) * 100 > seuil : true); })
+        .sort(function (a, b) { return Math.abs(b.tc - b.statistique) - Math.abs(a.tc - a.statistique); });
+      tcArt.slice(0, 3).forEach(function (a) {
+        var ecart = a.statistique > 0 ? ' (' + (a.tc > a.statistique ? '+' : '') + Math.round((a.tc / a.statistique - 1) * 100) + ' %)' : ' (pas de statistique)';
+        res.push({ niveau: 'ATTENTION', titre: 'Saisie TC vs statistique', detail: (a.libelle || a.code) + ' (' + a.entite + ') : TC ' + Math.round(a.tc) + ' contre statistique ' + Math.round(a.statistique) + ecart + '.' });
+      });
+      if (tcArt.length > 3) res.push({ niveau: 'INFO', titre: 'Autres écarts TC', detail: (tcArt.length - 3) + ' autre(s) article(s) s\'écartent de plus de ' + seuil + ' % entre la saisie des TC et la statistique.' });
       var arretes = d.articles.filter(function (a) { return a.n1 === 0 && a.statistique === 0 && !a.substitution && !a.evenements && !a.correction; }).length;
       if (arretes) res.push({ niveau: 'INFO', titre: 'Articles non reconduits', detail: arretes + ' article(s) vendus avant ' + (d.anneeReference || 'N-1') + ' mais pas depuis ne sont pas reconduits (prévision à zéro).' });
     }
     Stocks.alertes(acteur).forEach(function (a) { res.push(a); });
+    if (tc && tc.couverture && tc.couverture.tc > tc.couverture.tcAyantSaisi) {
+      res.push({ niveau: 'INFO', titre: 'Saisie des TC incomplète', detail: tc.couverture.tcAyantSaisi + ' TC sur ' + tc.couverture.tc + ' ont saisi (' + tc.couverture.renseignees + ' lignes sur ' + tc.couverture.saisissables + ').' });
+    }
+    if (tc && tc.erreur) res.push({ niveau: 'ERREUR', titre: 'Prévisions des TC illisibles', detail: tc.erreur });
     var declarees = {};
     Params.table('SOURCES').forEach(function (r) { if (yes(r['Actif import']) && txt(r['ID fichier'])) declarees[norm(r.Nature)] = true; });
     SOURCES_ATTENDUES.forEach(function (s) {
@@ -79,12 +90,16 @@ var Dashboard = (function () {
   function synthese(acteur) {
     Auth.requireCap(acteur, 'consultation');
     var d = Previsions.chargerCourante(acteur);
+    var tc = null;
+    try { var lu = PrevTC.lire(acteur); if (lu) tc = { couverture: lu.couverture, colonne: lu.colonne }; } catch (e) { tc = { erreur: e && e.message ? e.message : 'Lecture impossible.' }; }
     return {
       campagne: { id: txt(acteur.campagne['ID campagne']), libelle: txt(acteur.campagne.Libelle), type: norm(acteur.campagne.Type), statut: norm(acteur.campagne.Statut), anneePrevision: Number(acteur.campagne['Annee prevision']) || 0 },
       version: d.version,
       anneeReference: d.anneeReference,
       totaux: d.totaux,
-      alertes: alertes(acteur, d),
+      tc: tc,
+      baseTc: norm(Params.reglages().BASE_ARBITRAGE) === 'TC',
+      alertes: alertes(acteur, d, tc),
       echeances: echeances(acteur),
       seuilEcart: seuilEcart()
     };
