@@ -5,7 +5,7 @@
 # Conventions (reprises d'EurePrev) : noms d'onglets en MAJUSCULES_SANS_ACCENT, en-têtes sans accent,
 # codes et identifiants en TEXTE, OUI/NON en majuscules, vide = absence de valeur (jamais zéro).
 
-STRUCTURE_VERSION = "0.7"
+STRUCTURE_VERSION = "0.8"
 T, E, D, DT, B = "TEXTE", "ENTIER", "DECIMAL", "DATE", "OUI/NON"
 
 # (nom colonne, type, règle / exemple)
@@ -118,11 +118,14 @@ PARAM = {
    ("Libelle", T, ""), ("Seuil", D, ""), ("Unite seuil", T, "%, mois, T"),
    ("Perimetre", T, "Marché, plateforme ou * "), ("Role destinataire", T, ""), ("Actif", B, "")]),
  "SOURCES": ("Fichiers d'entrée alimentés par ailleurs. Une ligne par flux.", [
-   ("ID source", T, ""), ("Nature", "LISTE", "VENTES | STOCKS | BUDGET | COMMANDES_FOURN | PREV_TC | POIDS_ARTICLE | ORDONNANCEMENT"),
+   ("ID source", T, ""), ("Nature", "LISTE", "HISTO_PAC | VENTES | STOCKS | BUDGET | COMMANDES_FOURN | PREV_TC | POIDS_ARTICLE | ORDONNANCEMENT"),
    ("ID fichier", T, "ID Google Sheet natif"), ("Onglet", T, ""),
    ("Frequence", "LISTE", "HEBDO | MENSUEL | A_LA_DEMANDE"), ("Mode alimentation", "LISTE", "MANUEL | EXPORT_BO | QLIK | AUTOMATIQUE | APPLICATION"),
    ("Responsable", T, ""), ("Sensible", B, ""), ("Derniere synchro", DT, "Écrite par l'application"),
-   ("Lignes", E, ""), ("Actif import", B, ""), ("Commentaire", T, "")]),
+   ("Lignes", E, ""), ("Actif import", B, ""), ("Commentaire", T, ""),
+   ("ID campagne", T, "Vide = valable pour toutes les campagnes"), ("Entite", T, "HISTO_PAC : entité du fichier, ex. Coop EUREDEN"),
+   ("PAC", T, "HISTO_PAC : PAC1 à PAC4"), ("Annees", T, "HISTO_PAC : années lues, ex. 2024,2025,2026. Onglet = modèle avec {ANNEE}"),
+   ("Format", "LISTE", "SHEETS (Google Sheets natif) | XLSX (à convertir)")]),
  "ARBITRAGES": ("Décisions de conception en attente ou validées (même principe qu'EurePrev).", [
    ("Decision", T, ""), ("Choix", T, ""), ("Statut", "LISTE", "VALIDE_UTILISATEUR | PROPOSITION | A_VALIDER | A_COMPLETER")]),
 }

@@ -9,6 +9,8 @@ DEFAUTS = {
  "MODE_EMPLOI": [("Version", "Modèle de structure v" + STRUCTURE_VERSION + " – à compléter. L'application contrôle que les onglets et colonnes correspondent à cette version."),
                  ("Règles", "Codes en texte. Mois AAAA-MM. Semaine AAAA-Sss. OUI/NON. Une cellule vide n'est pas zéro."),
                  ("Attention", "Ne pas trier, insérer ou supprimer de lignes dans les onglets écrits par l'application.")],
+ "SOURCES": [("HISTO_EUREDEN","HISTO_PAC","","Données {ANNEE}","A_LA_DEMANDE","QLIK","","NON","","","NON","Coller l'ID du fichier, puis Actif import = OUI","","Coop EUREDEN","PAC1","2024,2025,2026","SHEETS"),
+             ("HISTO_ONA","HISTO_PAC","","Données {ANNEE}","A_LA_DEMANDE","QLIK","","NON","","","NON","Coller l'ID du fichier, puis Actif import = OUI","","NEGOCE ONA","PAC1","2024,2025,2026","SHEETS")],
  "REGLAGES": [("DOMAINES","eureden.com","Domaine exact de connexion"),("UNITE_PIVOT","T","Tonnes"),
    ("SEUIL_ECART_N1","15","Alerte si écart vs N-1 supérieur (%)"),("COUVERTURE_MIN_MOIS","1","Risque de rupture en dessous"),
    ("COUVERTURE_MAX_MOIS","3","Surstock au-dessus"),("PRECISION_QTE","3","Décimales"),("PRECISION_TONNES","3","Décimales"),

@@ -52,7 +52,7 @@
       '<div class="grille"><div class="carte"><h2>Votre accès</h2><ul class="liste">' +
       '<li><b>Adresse</b> ' + esc(s.utilisateur) + '</li><li><b>Rôle</b> ' + s.roles.map(function (r) { return pastille('p-marque', '●', r); }).join(' ') + '</li></ul></div>' +
       '<div class="carte"><h2>Ce que vous pouvez faire</h2><ul class="liste">' + droits + '</ul></div></div>' +
-      '<p class="note">Version ' + esc(s.version) + ' du socle. Les écrans de prévision, de cadençage et de stock arrivent ensuite.</p>';
+      '<p class="note">Version ' + esc(s.version) + ' du socle. L\'historique est lu ; les écrans de prévision, de cadençage et de stock arrivent ensuite.</p>';
   }
 
   function ecranVersions() {
@@ -127,6 +127,68 @@
     };
   }
 
+  // ---------- Historique du PAC ----------
+  var nf0 = new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 });
+  function n0(v) { return nf0.format(Math.round(v || 0)); }
+  function variation(a, b) {
+    if (!b) return a ? pastille('p-info', '●', 'Nouveau') : '';
+    var p = (a - b) / Math.abs(b) * 100;
+    var classe = Math.abs(p) >= 15 ? 'p-warn' : 'p-info';
+    return pastille(classe, p >= 0 ? '▲' : '▼', (p >= 0 ? '+' : '') + nf0.format(Math.round(p)) + ' %');
+  }
+
+  function ecranHistorique() {
+    return '<h1>Historique des ventes</h1><p class="sub">Ventes du PAC des années passées, lues dans les fichiers déclarés dans SOURCES.</p>' +
+      '<div id="h-contenu"><div class="carte">Chargement…</div></div>';
+  }
+
+  function dessinerHistorique(d) {
+    var an = d.annees, derniere = an[an.length - 1], avant = an.length > 1 ? an[an.length - 2] : null;
+    var entites = d.sources.map(function (s) { return s.entite; });
+    var cartes = d.totaux.map(function (t) {
+      return '<tr><td>' + esc(t.entite) + '</td><td>' + esc(t.annee) + '</td><td class="n">' + n0(t.articles) + '</td><td class="n">' + n0(t.tc) +
+        '</td><td class="n">' + n0(t.qte) + '</td><td class="n">' + n0(t.ha) + '</td><td class="n">' + n0(t.montant) + ' €</td></tr>';
+    }).join('');
+    var haut = '<div class="carte"><h2>Totaux par entité et par année</h2><div class="tableau"><table><thead><tr><th>Entité</th><th>Année</th><th>Articles</th><th>TC</th><th>Quantité</th><th>Hectares</th><th>Montant HT</th></tr></thead><tbody>' + cartes + '</tbody></table></div>' +
+      '<p class="note">La quantité additionne des unités de stock différentes (sacs, bidons, kg). Le passage en tonnes viendra avec le poids des articles.</p></div>';
+    var filtres = '<div class="carte"><h2>Articles</h2><div class="grille"><div><label for="h-entite">Entité</label><select id="h-entite"><option value="">Toutes</option>' +
+      entites.map(function (e) { return '<option>' + esc(e) + '</option>'; }).join('') + '</select></div>' +
+      '<div><label for="h-texte">Rechercher (code ou libellé)</label><input id="h-texte" type="search" maxlength="60"></div></div>' +
+      '<div class="tableau" id="h-table" style="margin-top:12px"></div><p class="note" id="h-note"></p></div>';
+    var avert = d.avertissements.length ? '<div class="carte"><h2>Points d\'attention</h2><ul class="liste">' + d.avertissements.map(function (a) { return '<li>' + pastille('p-warn', '⚠', 'Attention') + ' ' + esc(a) + '</li>'; }).join('') + '</ul></div>' : '';
+    $('#h-contenu').innerHTML = haut + filtres + avert;
+
+    function liste() {
+      var e = $('#h-entite').value, q = $('#h-texte').value.trim().toLowerCase();
+      var sel = d.articles.filter(function (a) {
+        return (!e || a.entite === e) && (!q || a.code.toLowerCase().indexOf(q) >= 0 || a.libelle.toLowerCase().indexOf(q) >= 0);
+      });
+      var entete = '<th>Code</th><th>Libellé</th><th>Entité</th>' + an.map(function (y) { return '<th>Qté ' + esc(y) + '</th>'; }).join('') +
+        '<th>Montant ' + esc(derniere) + '</th>' + (avant ? '<th>' + esc(derniere) + ' vs ' + esc(avant) + '</th>' : '');
+      var corps = sel.slice(0, 200).map(function (a) {
+        var p = a.parAnnee, l = p[derniere] || { qte: 0, mt: 0 }, b = avant ? (p[avant] || { qte: 0 }) : null;
+        return '<tr><td>' + esc(a.code) + '</td><td>' + esc(a.libelle) + '</td><td>' + esc(a.entite) + '</td>' +
+          an.map(function (y) { return '<td class="n">' + (p[y] ? n0(p[y].qte) : '–') + '</td>'; }).join('') +
+          '<td class="n">' + n0(l.mt) + ' €</td>' + (avant ? '<td>' + variation(l.qte, b.qte) + '</td>' : '') + '</tr>';
+      }).join('');
+      $('#h-table').innerHTML = sel.length ? '<table><thead><tr>' + entete + '</tr></thead><tbody>' + corps + '</tbody></table>' : '<p class="note">Aucun article ne correspond.</p>';
+      $('#h-note').textContent = sel.length + ' article(s)' + (sel.length > 200 ? ', 200 affichés : affinez la recherche' : '') +
+        (d.tronque ? ' · ' + d.nbArticles + ' articles au total, les ' + d.articles.length + ' premiers par montant ' + derniere + ' sont chargés' : '') + '.';
+    }
+    $('#h-entite').onchange = liste;
+    $('#h-texte').oninput = liste;
+    liste();
+  }
+
+  function chargerHistorique() {
+    appel('apiHistorique').then(function (r) {
+      var c = $('#h-contenu');
+      if (!c) return;
+      if (!r.ok) { c.innerHTML = '<div class="carte"><h2>Historique indisponible</h2><p>' + esc(r.message) + '</p><p class="note">Code : ' + esc(r.code) + '</p></div>'; return; }
+      dessinerHistorique(r.data);
+    });
+  }
+
   function ecranControles() {
     return '<h1>Contrôles de mise en service</h1><p class="sub">Vérifie les classeurs, la campagne et les accès avant l\'ouverture.</p>' +
       '<div class="carte"><div class="rangee"><button class="btn pri" id="c-lancer" type="button">Lancer les contrôles</button><span id="c-etat" class="note" role="status"></span></div><div id="c-resultats" style="margin-top:12px"></div></div>';
@@ -149,7 +211,7 @@
 
   // ---------- Navigation ----------
   function onglets() {
-    var o = [['accueil', 'Accueil'], ['versions', 'Versions']];
+    var o = [['accueil', 'Accueil'], ['historique', 'Historique'], ['versions', 'Versions']];
     if (etat.session.droits.configuration) o.push(['controles', 'Contrôles']);
     return o;
   }
@@ -161,7 +223,8 @@
     }).join('');
     Array.prototype.forEach.call($('#menu').querySelectorAll('button'), function (b) { b.onclick = function () { afficher(b.getAttribute('data-onglet')); }; });
     var c = $('#contenu');
-    if (nom === 'versions') { c.innerHTML = ecranVersions(); chargerVersions(); brancherFormVersion(); }
+    if (nom === 'historique') { c.innerHTML = ecranHistorique(); chargerHistorique(); }
+    else if (nom === 'versions') { c.innerHTML = ecranVersions(); chargerVersions(); brancherFormVersion(); }
     else if (nom === 'controles') { c.innerHTML = ecranControles(); brancherControles(); }
     else c.innerHTML = ecranAccueil();
   }

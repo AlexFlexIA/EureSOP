@@ -515,7 +515,7 @@ Fichiers d'entrée alimentés par ailleurs. Une ligne par flux.
 | Colonne | Type | Règle ou exemple |
 |---|---|---|
 | ID source | TEXTE |  |
-| Nature | LISTE | VENTES | STOCKS | BUDGET | COMMANDES_FOURN | PREV_TC | POIDS_ARTICLE | ORDONNANCEMENT |
+| Nature | LISTE | HISTO_PAC | VENTES | STOCKS | BUDGET | COMMANDES_FOURN | PREV_TC | POIDS_ARTICLE | ORDONNANCEMENT |
 | ID fichier | TEXTE | ID Google Sheet natif |
 | Onglet | TEXTE |  |
 | Frequence | LISTE | HEBDO | MENSUEL | A_LA_DEMANDE |
@@ -526,6 +526,11 @@ Fichiers d'entrée alimentés par ailleurs. Une ligne par flux.
 | Lignes | ENTIER |  |
 | Actif import | OUI/NON |  |
 | Commentaire | TEXTE |  |
+| ID campagne | TEXTE | Vide = valable pour toutes les campagnes |
+| Entite | TEXTE | HISTO_PAC : entité du fichier, ex. Coop EUREDEN |
+| PAC | TEXTE | HISTO_PAC : PAC1 à PAC4 |
+| Annees | TEXTE | HISTO_PAC : années lues, ex. 2024,2025,2026. Onglet = modèle avec {ANNEE} |
+| Format | LISTE | SHEETS (Google Sheets natif) | XLSX (à convertir) |
 
 ### ARBITRAGES
 Décisions de conception en attente ou validées (même principe qu'EurePrev).

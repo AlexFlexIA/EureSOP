@@ -1,0 +1,197 @@
+// Historique des ventes d'un PAC, lu directement dans les fichiers déclarés dans SOURCES (Nature = HISTO_PAC).
+//
+// Un fichier par entité, un onglet par année (modèle d'onglet avec {ANNEE}, ex. « Données {ANNEE} »).
+// Chaque onglet donne, par article et par TC, les ventes de la période du PAC : quantité, hectares, montant HT.
+// L'application ne recoupe aucune période : elle prend ce que contient l'onglet.
+
+var Histo = (function () {
+  var MAX_ARTICLES = 400;
+
+  // Colonnes attendues, reconnues par leur début une fois les accents et la casse retirés.
+  var COLONNES = [
+    { cle: 'code', debut: 'code produit', nom: 'Code produit long Triskalia' },
+    { cle: 'libelle', debut: 'libelle produit', nom: 'Libellé produit de la coop origine' },
+    { cle: 'codeTc', debut: 'code technicien', nom: 'Code technicien Appro/DTD' },
+    { cle: 'nomTc', debut: 'nom du technicien', nom: 'Nom du technicien Appro/DTD', facultative: true },
+    { cle: 'qte', debut: 'total qtes', nom: 'Total qtés vtes' },
+    { cle: 'ha', debut: 'total ha', nom: 'Total Ha vtes' },
+    { cle: 'mt', debut: 'total mt ht', nom: 'Total mt ht vtes' }
+  ];
+
+  function canon(v) {
+    return txt(v).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ');
+  }
+
+  // Un nombre peut arriver en texte avec virgule décimale et espaces. Vide ou illisible : 0.
+  function nombre(v) {
+    if (typeof v === 'number') return isFinite(v) ? v : 0;
+    var t = txt(v).replace(/[\s ]/g, '').replace(',', '.');
+    if (!t) return 0;
+    var n = Number(t);
+    return isFinite(n) ? n : 0;
+  }
+
+  function codeTexte(v) {
+    if (typeof v === 'number') return String(Math.round(v));
+    return txt(v);
+  }
+
+  function sources(idCampagne) {
+    return Params.table('SOURCES').filter(function (r) {
+      return norm(r.Nature) === 'HISTO_PAC' && yes(r['Actif import']) &&
+        (!txt(r['ID campagne']) || txt(r['ID campagne']) === txt(idCampagne));
+    });
+  }
+
+  function annees(src) {
+    var liste = txt(src.Annees).split(/[,;\s]+/).filter(Boolean);
+    var vues = {};
+    liste.forEach(function (a) {
+      if (!/^\d{4}$/.test(a)) throw new AppError('HISTO_ANNEES', 'Source ' + txt(src['ID source']) + ' : « ' + a + ' » n\'est pas une année (colonne Annees, ex. 2024,2025,2026).');
+      vues[a] = true;
+    });
+    var out = Object.keys(vues).sort();
+    if (!out.length) throw new AppError('HISTO_ANNEES', 'Source ' + txt(src['ID source']) + ' : aucune année dans la colonne Annees.');
+    return out;
+  }
+
+  function lireOnglet(src, annee) {
+    var id = txt(src['ID fichier']);
+    var modele = txt(src.Onglet) || 'Données {ANNEE}';
+    var onglet = modele.indexOf('{ANNEE}') >= 0 ? modele.replace('{ANNEE}', annee) : modele;
+    if (!id) throw new AppError('HISTO_ID_ABSENT', 'Source ' + txt(src['ID source']) + ' : ID fichier vide.');
+    var donnees;
+    try {
+      donnees = Store.read(id, onglet);
+    } catch (e) {
+      if (e && e.code === 'CLASSEUR_INACCESSIBLE' && norm(src.Format) === 'XLSX') {
+        throw new AppError('HISTO_XLSX', 'Source ' + txt(src['ID source']) + ' : ce fichier est un Excel. Ouvrez-le dans Google Drive, faites Fichier > Enregistrer en tant que feuille Google Sheets, puis déclarez le nouvel ID avec Format = SHEETS.');
+      }
+      throw e;
+    }
+    var position = {};
+    var manque = [];
+    COLONNES.forEach(function (c) {
+      var trouvee = donnees.headers.filter(function (h) { return h && canon(h).indexOf(c.debut) === 0; })[0];
+      if (trouvee) position[c.cle] = trouvee;
+      else if (!c.facultative) manque.push(c.nom);
+    });
+    if (manque.length) {
+      throw new AppError('HISTO_COLONNES', 'Onglet ' + onglet + ' (source ' + txt(src['ID source']) + ') : colonnes manquantes : ' + manque.join(', ') + '.');
+    }
+    return { onglet: onglet, position: position, lignes: donnees.rows };
+  }
+
+  // Droits de lecture : global, ou périmètre fait uniquement de Code TC et d'Entité. Tout autre périmètre
+  // (territoire, bassin, marché) ne peut pas être évalué sur ces fichiers et ne donne accès à rien.
+  function filtreAcces(actor) {
+    var regles = [];
+    actor.roles.forEach(function (r) {
+      var profil = actor.profils[r.role];
+      if (!profil || !profil.consultation) return;
+      if (r.perimetre.global) { regles.push({ tout: true }); return; }
+      var p = r.perimetre;
+      var inevaluable = ['departement', 'territoire', 'bassin', 'marche', 'plateforme'].some(function (k) { return !!p[k]; });
+      if (inevaluable || (!p.codeTc && !p.entite)) return;
+      regles.push({ codeTc: p.codeTc, entite: p.entite });
+    });
+    return function (entite, codeTc) {
+      return regles.some(function (g) {
+        if (g.tout) return true;
+        return (!g.codeTc || g.codeTc === norm(codeTc)) && (!g.entite || g.entite === norm(entite));
+      });
+    };
+  }
+
+  function synthese(actor) {
+    Auth.requireCap(actor, 'consultation');
+    var campagne = txt(actor.campagne['ID campagne']);
+    var liste = sources(campagne);
+    if (!liste.length) {
+      throw new AppError('HISTO_SANS_SOURCE', 'Aucune source d\'historique active pour cette campagne. Dans SOURCES, déclarez une ligne de nature HISTO_PAC avec l\'ID du fichier et Actif import = OUI.');
+    }
+    var autorise = filtreAcces(actor);
+    var toutesAnnees = {};
+    var totaux = {};
+    var articles = {};
+    var tcVus = {};
+    var infos = [];
+    var avertissements = [];
+
+    liste.forEach(function (src) {
+      var entite = txt(src.Entite) || txt(src['ID source']);
+      var info = { source: txt(src['ID source']), entite: entite, pac: txt(src.PAC), annees: [], lignes: 0 };
+      annees(src).forEach(function (annee) {
+        var o = lireOnglet(src, annee);
+        toutesAnnees[annee] = true;
+        info.annees.push(annee);
+        var tk = entite + '|' + annee;
+        var t = totaux[tk] = totaux[tk] || { entite: entite, annee: annee, lignes: 0, qte: 0, ha: 0, montant: 0 };
+        var articlesAnnee = {};
+        var sansCode = 0;
+        o.lignes.forEach(function (l) {
+          var code = codeTexte(l[o.position.code]);
+          if (!code) { sansCode++; return; }
+          var codeTc = codeTexte(l[o.position.codeTc]);
+          if (!autorise(entite, codeTc)) return;
+          var qte = nombre(l[o.position.qte]), ha = nombre(l[o.position.ha]), mt = nombre(l[o.position.mt]);
+          t.lignes++; t.qte += qte; t.ha += ha; t.montant += mt;
+          info.lignes++;
+          tcVus[entite + '|' + annee + '|' + codeTc] = true;
+          articlesAnnee[code] = true;
+          var ak = entite + '|' + code;
+          var a = articles[ak] = articles[ak] || { code: code, libelle: '', entite: entite, parAnnee: {} };
+          if (!a.libelle) a.libelle = txt(l[o.position.libelle]);
+          var pa = a.parAnnee[annee] = a.parAnnee[annee] || { qte: 0, ha: 0, mt: 0, tc: 0 };
+          pa.qte += qte; pa.ha += ha; pa.mt += mt; pa.tc++;
+        });
+        t.articles = Object.keys(articlesAnnee).length;
+        if (sansCode) avertissements.push(o.onglet + ' (' + entite + ') : ' + sansCode + ' ligne(s) sans code produit ignorée(s).');
+      });
+      infos.push(info);
+    });
+
+    var an = Object.keys(toutesAnnees).sort();
+    var derniere = an[an.length - 1];
+    var totauxListe = Object.keys(totaux).map(function (k) {
+      var t = totaux[k];
+      t.tc = Object.keys(tcVus).filter(function (c) { return c.indexOf(t.entite + '|' + t.annee + '|') === 0; }).length;
+      return t;
+    }).sort(function (a, b) { return a.entite < b.entite ? -1 : a.entite > b.entite ? 1 : (a.annee < b.annee ? -1 : 1); });
+
+    var tous = Object.keys(articles).map(function (k) { return articles[k]; });
+    var valeur = function (a) { var p = a.parAnnee[derniere]; return p ? p.mt : 0; };
+    tous.sort(function (a, b) { return valeur(b) - valeur(a) || (a.code < b.code ? -1 : 1); });
+    return {
+      annees: an,
+      sources: infos,
+      totaux: totauxListe,
+      articles: tous.slice(0, MAX_ARTICLES),
+      nbArticles: tous.length,
+      tronque: tous.length > MAX_ARTICLES,
+      avertissements: avertissements
+    };
+  }
+
+  // Contrôle de mise en service : chaque source active doit s'ouvrir avec ses onglets et ses colonnes.
+  function verifier(campagne) {
+    var res = [];
+    var liste;
+    try { liste = sources(campagne); } catch (e) { return [{ niveau: 'ERREUR', sujet: 'Historique PAC', detail: e.message }]; }
+    if (!liste.length) return [{ niveau: 'ATTENTION', sujet: 'Historique PAC', detail: 'Aucune source HISTO_PAC active dans SOURCES.' }];
+    liste.forEach(function (src) {
+      var nom = txt(src['ID source']);
+      try {
+        annees(src).forEach(function (a) {
+          var o = lireOnglet(src, a);
+          res.push({ niveau: 'OK', sujet: 'Historique ' + nom, detail: o.onglet + ' : ' + o.lignes.length + ' ligne(s), colonnes reconnues.' });
+        });
+      } catch (e) {
+        res.push({ niveau: 'ERREUR', sujet: 'Historique ' + nom, detail: e.message });
+      }
+    });
+    return res;
+  }
+
+  return { sources: sources, synthese: synthese, verifier: verifier, _nombre: nombre };
+})();

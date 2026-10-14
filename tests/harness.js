@@ -6,7 +6,7 @@ const path = require('path');
 const vm = require('vm');
 
 const RACINE = path.resolve(__dirname, '..');
-const FICHIERS_CODE = ['Structure.gs', 'Config.gs', 'Store.gs', 'Params.gs', 'Auth.gs', 'Journal.gs', 'Versions.gs', 'Controles.gs', 'Setup.gs', 'Code.gs'];
+const FICHIERS_CODE = ['Structure.gs', 'Config.gs', 'Store.gs', 'Params.gs', 'Auth.gs', 'Journal.gs', 'Versions.gs', 'Histo.gs', 'Controles.gs', 'Setup.gs', 'Code.gs'];
 
 function enTetes(dossier, tab) {
   const ligne = fs.readFileSync(path.join(RACINE, 'modeles', dossier, tab + '.csv'), 'utf8').split('\n')[0].replace(/\r$/, '');
@@ -97,6 +97,16 @@ function creerEnv() {
     const f = env.feuille(id, tab);
     const h = f._data[0];
     return f._data.slice(1).map((r) => { const o = {}; h.forEach((c, i) => { o[c] = r[i] === undefined ? '' : r[i]; }); return o; });
+  };
+  // Classeur externe de test : { onglet: [entetes, ligne, ligne...] }.
+  env.ajouterClasseur = (id, onglets) => {
+    const feuilles = {};
+    Object.keys(onglets).forEach((n) => {
+      const f = creerFeuille(onglets[n][0]);
+      onglets[n].slice(1).forEach((r) => f._data.push(r));
+      feuilles[n] = f;
+    });
+    env.classeurs[id] = { getSheetByName: (n) => feuilles[n] || null, _feuilles: feuilles };
   };
   env.moi = (email) => { env.utilisateur = email; };
   return env;

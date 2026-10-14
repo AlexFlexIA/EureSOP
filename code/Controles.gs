@@ -59,7 +59,7 @@ var Controles = (function () {
       res.push({ niveau: 'ATTENTION', sujet: 'Modèle', detail: 'La structure attendue est la version ' + SOP_STRUCTURE_VERSION + ' du modèle. Si les classeurs ont été créés avec une version plus ancienne, réimportez les modèles actuels (Fichier > Importer > Remplacer la feuille de calcul garde le même ID).' });
     }
     if (!res.length) res.push({ niveau: 'OK', sujet: 'Mise en service', detail: 'Structure, campagne et accès conformes.' });
-    return res;
+    return res.concat(Histo.verifier(idCampagne));
   }
 
   return { run: run };

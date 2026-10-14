@@ -346,6 +346,121 @@ test('apiCreerVersion : une erreur technique devient ERREUR_INTERNE', () => {
   assert.ok(!/secret/.test(r.message));
 });
 
+// ---------- Historique PAC ----------
+const ENT_HISTO = ['Concat', 'Code produit long Triskalia', 'Libellé produit de la coop origine', 'Code technicien Appro/DTD', 'Nom du technicien Appro/DTD', 'Total qtés vtes', 'Total Ha vtes', 'Total mt ht vtes'];
+const FICHIER_EUR = 'FICHIER_HISTO_EUREDEN_0001';
+const FICHIER_ONA = 'FICHIER_HISTO_ONA_00000001';
+
+function envHisto(extraSource) {
+  const env = creerEnvStandard();
+  env.ajouterClasseur(FICHIER_EUR, {
+    'Données 2024': [ENT_HISTO,
+      ['1109939102441', 1109939, 'D.A.P. 35K', 102441, 'LE NAOUR ROBERT', 14420, 144, 12000],
+      ['1109939199405', 1109939, 'D.A.P. 35K', 199405, 'TC OK', '1 000,5', 10, '2 000,25'],
+      ['x', '', 'sans code', 102441, 'LE NAOUR ROBERT', 5, 1, 1]],
+    'Données 2025': [ENT_HISTO,
+      ['1109939102441', 1109939, 'D.A.P. 35K', 102441, 'LE NAOUR ROBERT', 16000, 160, 14000],
+      ['1109939199405', 1109939, 'D.A.P. 35K', 199405, 'TC OK', 900, 9, 1800]]
+  });
+  env.ajouterClasseur(FICHIER_ONA, {
+    'Données 2025': [ENT_HISTO, ['2200001159304', 2200001, 'AUTRE ARTICLE', 159304, 'TC ONA', 50, 5, 500]]
+  });
+  const base = { Nature: 'HISTO_PAC', Onglet: 'Données {ANNEE}', 'Actif import': 'OUI', PAC: 'PAC1', Format: 'SHEETS' };
+  env.semer('PARAM_FICHIER_TEST_00001', 'SOURCES', [
+    Object.assign({ 'ID source': 'HISTO_EUREDEN', 'ID fichier': FICHIER_EUR, Entite: 'Coop EUREDEN', Annees: '2024,2025' }, base),
+    Object.assign({ 'ID source': 'HISTO_ONA', 'ID fichier': FICHIER_ONA, Entite: 'NEGOCE ONA', Annees: '2025' }, base)
+  ].concat(extraSource || []));
+  return env;
+}
+
+test('historique : totaux par entité et année, accents et nombres en texte', () => {
+  const env = envHisto(); env.moi('guillaume@eureden.com');
+  const r = env.run('apiHistorique()');
+  assert.strictEqual(r.ok, true);
+  assert.deepStrictEqual(r.data.annees, ['2024', '2025']);
+  const t = (e, a) => r.data.totaux.filter((x) => x.entite === e && x.annee === a)[0];
+  assert.strictEqual(t('Coop EUREDEN', '2024').lignes, 2);
+  assert.strictEqual(t('Coop EUREDEN', '2024').qte, 14420 + 1000.5);
+  assert.strictEqual(t('Coop EUREDEN', '2024').montant, 12000 + 2000.25);
+  assert.strictEqual(t('Coop EUREDEN', '2024').tc, 2);
+  assert.strictEqual(t('NEGOCE ONA', '2025').qte, 50);
+});
+test('historique : article regroupé par code texte, trié sur la dernière année', () => {
+  const env = envHisto(); env.moi('guillaume@eureden.com');
+  const r = env.run('apiHistorique()').data;
+  assert.strictEqual(r.nbArticles, 2);
+  assert.strictEqual(r.articles[0].code, '1109939');
+  assert.strictEqual(r.articles[0].parAnnee['2025'].mt, 15800);
+  assert.strictEqual(r.articles[0].parAnnee['2024'].tc, 2);
+});
+test('historique : ligne sans code produit ignorée avec avertissement', () => {
+  const env = envHisto(); env.moi('guillaume@eureden.com');
+  const r = env.run('apiHistorique()').data;
+  assert.ok(r.avertissements.some((a) => /sans code produit/.test(a)));
+});
+test('historique : colonne manquante nommée', () => {
+  const env = envHisto(); env.moi('guillaume@eureden.com');
+  env.feuille(FICHIER_ONA, 'Données 2025')._data[0][7] = 'Autre chose';
+  const r = env.run('apiHistorique()');
+  assert.strictEqual(r.ok, false);
+  assert.strictEqual(r.code, 'HISTO_COLONNES');
+  assert.ok(/Total mt ht vtes/.test(r.message));
+});
+test('historique : onglet absent', () => {
+  const env = envHisto(); env.moi('guillaume@eureden.com');
+  delete env.classeurs[FICHIER_EUR]._feuilles['Données 2024'];
+  assert.strictEqual(env.run('apiHistorique()').code, 'ONGLET_ABSENT');
+});
+test('historique : aucune source active', () => {
+  const env = creerEnvStandard(); env.moi('guillaume@eureden.com');
+  assert.strictEqual(env.run('apiHistorique()').code, 'HISTO_SANS_SOURCE');
+});
+test('historique : source inactive ou d\'une autre campagne ignorée', () => {
+  const env = envHisto([{ 'ID source': 'X', Nature: 'HISTO_PAC', 'ID fichier': 'INCONNU', 'Actif import': 'NON', Annees: '2025' },
+    { 'ID source': 'Y', Nature: 'HISTO_PAC', 'ID fichier': 'INCONNU', 'Actif import': 'OUI', 'ID campagne': 'AUTRE', Annees: '2025' }]);
+  env.moi('guillaume@eureden.com');
+  assert.strictEqual(env.run('apiHistorique()').ok, true);
+});
+test('historique : année invalide refusée', () => {
+  const env = envHisto(); env.moi('guillaume@eureden.com');
+  env.lignes('PARAM_FICHIER_TEST_00001', 'SOURCES');
+  env.feuille('PARAM_FICHIER_TEST_00001', 'SOURCES')._data[1][15] = '2024,abc';
+  assert.strictEqual(env.run('apiHistorique()').code, 'HISTO_ANNEES');
+});
+test('historique : fichier Excel inaccessible, message de conversion', () => {
+  const env = envHisto([{ 'ID source': 'XL', Nature: 'HISTO_PAC', 'ID fichier': 'FICHIER_EXCEL_INCONNU_0001', Onglet: 'Données {ANNEE}', 'Actif import': 'OUI', Annees: '2025', Format: 'XLSX', Entite: 'Z' }]);
+  env.moi('guillaume@eureden.com');
+  const r = env.run('apiHistorique()');
+  assert.strictEqual(r.code, 'HISTO_XLSX');
+  assert.ok(/Google Sheets/.test(r.message));
+});
+test('historique : un TC ne voit que ses lignes', () => {
+  const env = envHisto(); env.moi('tc.ok@eureden.com');
+  const r = env.run('apiHistorique()').data;
+  const t = r.totaux.filter((x) => x.entite === 'Coop EUREDEN' && x.annee === '2024')[0];
+  assert.strictEqual(t.lignes, 1);
+  assert.strictEqual(t.qte, 1000.5);
+  assert.strictEqual(r.totaux.filter((x) => x.entite === 'NEGOCE ONA')[0].lignes, 0);
+});
+test('historique : un périmètre territoire ou marché ne donne accès à rien', () => {
+  const env = envHisto(); env.moi('rt.argoat@eureden.com');
+  const r = env.run('apiHistorique()').data;
+  assert.strictEqual(r.totaux.reduce((s, x) => s + x.lignes, 0), 0);
+  assert.strictEqual(r.nbArticles, 0);
+});
+test('historique : contrôles de mise en service listent chaque onglet', () => {
+  const env = envHisto(); env.moi('admin@eureden.com');
+  const c = env.run('Controles.run(Auth.resolve())').filter((x) => /^Historique /.test(x.sujet));
+  assert.strictEqual(c.length, 3);
+  assert.ok(c.every((x) => x.niveau === 'OK'));
+});
+test('historique : contrôles signalent un onglet qui ne s\'ouvre pas', () => {
+  const env = envHisto(); env.moi('admin@eureden.com');
+  delete env.classeurs[FICHIER_ONA]._feuilles['Données 2025'];
+  const c = env.run('Controles.run(Auth.resolve())').filter((x) => x.sujet === 'Historique HISTO_ONA');
+  assert.strictEqual(c[0].niveau, 'ERREUR');
+});
+
 let echecs = 0;
 tests.forEach(({ nom, fn }) => {
   try { fn(); console.log('  ok   ' + nom); } catch (e) { echecs++; console.log('  ECHEC ' + nom + '\n        ' + (e.message || e).split('\n')[0]); }

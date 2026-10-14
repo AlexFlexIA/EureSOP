@@ -57,3 +57,7 @@ function apiVerrouillerVersion(idVersion, idOperation) {
 function apiControles() {
   return reponse_(function () { return Controles.run(Auth.resolve()); });
 }
+
+function apiHistorique() {
+  return reponse_(function () { return Histo.synthese(Auth.resolve()); });
+}

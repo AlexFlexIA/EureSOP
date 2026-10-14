@@ -66,3 +66,29 @@ Les tests exécutent le vrai code Apps Script dans Node avec un double en mémoi
 ## Prochaines étapes
 
 Import des historiques et des ventes, calcul de la prévision statistique, cadençage hebdomadaire, saisie des corrections avec conflits de version, projection de stock, approvisionnement cadencé.
+
+## Historique des ventes d'un PAC (v0.1.0)
+
+L'écran **Historique** lit directement les fichiers déclarés dans l'onglet SOURCES de PARAMETRES_SOP (Nature = `HISTO_PAC`).
+
+Une ligne par fichier, donc une pour Eureden et une pour ONA :
+
+| Colonne | Valeur |
+|---|---|
+| ID source | `HISTO_EUREDEN`, `HISTO_ONA` |
+| Nature | `HISTO_PAC` |
+| ID fichier | ID du Google Sheets (partie de l'URL entre `/d/` et `/edit`) |
+| Onglet | `Données {ANNEE}` (`{ANNEE}` est remplacé par chaque année) |
+| Actif import | `OUI` |
+| Entite | `Coop EUREDEN` ou `NEGOCE ONA` |
+| PAC | `PAC1` |
+| Annees | `2024,2025,2026` |
+| Format | `SHEETS` |
+
+Colonnes lues dans chaque onglet (reconnues par leur début, sans tenir compte des accents ni de la casse) : `Code produit…`, `Libellé produit…`, `Code technicien…`, `Nom du technicien…` (facultative), `Total qtés vtes`, `Total Ha vtes`, `Total mt ht vtes`.
+
+- Le compte qui déploie l'application doit avoir accès aux deux fichiers.
+- Un fichier Excel doit d'abord être enregistré en Google Sheets (Fichier > Enregistrer en tant que feuille Google Sheets) : l'ID change.
+- L'application ne recoupe aucune période : elle prend le contenu de l'onglet.
+- Droits : global, ou périmètre limité à un Code TC et/ou une Entité. Un périmètre territoire, bassin ou marché ne donne accès à aucune ligne (ces fichiers ne portent pas ces informations).
+- Les contrôles de mise en service ouvrent chaque onglet et vérifient les colonnes.
