@@ -1,0 +1,55 @@
+<style>
+:root {
+  /* Charte Eureden : variables numériques. Interface claire, texte foncé, couleur en surface et en repère. */
+  --jaune: #E8E22F; --jaune-pale: #F8F5A7; --olive: #514F21;
+  --texte: #444444; --noir: #000000; --gris: #8A8A8A; --gris-clair: #F0F0F0; --blanc: #FFFFFF;
+  --vert: #84BD66;
+  --ok-bg: #E3F1DA; --ok-fg: #2F5D1B; --warn-bg: #FDE9CC; --warn-fg: #7A4300; --bad-bg: #FADAD6; --bad-fg: #9B1C13;
+  --police: 'Nunito Sans', Arial, sans-serif;
+  --bandeau: clamp(8px, 2vw, 24px);
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--gris-clair); color: var(--texte); font: 14px/1.45 var(--police); }
+.bandeau { position: fixed; left: 0; top: 0; width: var(--bandeau); height: 100%; background: var(--jaune); }
+.page { margin-left: var(--bandeau); min-height: 100vh; }
+header { background: var(--blanc); border-bottom: 1px solid #ddd; padding: 12px 20px; display: flex; flex-wrap: wrap; gap: 14px 20px; align-items: center; }
+.logo { display: flex; flex-direction: column; padding-right: 18px; border-right: 1px solid #ddd; }
+.logo b { font-size: 22px; color: var(--noir); font-weight: 800; letter-spacing: -.5px; }
+.logo small { font-size: 9px; letter-spacing: 1.5px; text-transform: uppercase; }
+.spacer { flex: 1; }
+.moi { text-align: right; font-size: 12px; }
+.moi b { display: block; font-size: 13px; }
+nav { background: var(--blanc); border-bottom: 1px solid #ddd; padding: 0 20px; display: flex; flex-wrap: wrap; }
+nav button { border: 0; background: none; padding: 12px 16px; font: inherit; font-weight: 700; color: var(--texte); cursor: pointer; border-bottom: 4px solid transparent; }
+nav button[aria-current="page"] { background: var(--jaune-pale); border-bottom-color: var(--olive); color: var(--noir); font-weight: 800; }
+:focus-visible { outline: 3px solid var(--olive); outline-offset: 2px; }
+main { padding: 22px 20px 60px; max-width: 1100px; }
+h1 { margin: 0 0 4px; font-size: 22px; color: var(--noir); font-weight: 800; }
+.sub { margin: 0 0 18px; }
+.carte { background: var(--blanc); border-radius: 10px; padding: 16px 18px; box-shadow: 0 1px 2px rgba(0,0,0,.08); margin-bottom: 16px; min-width: 0; }
+.carte h2 { margin: 0 0 10px; font-size: 15px; color: var(--noir); font-weight: 800; }
+.grille { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+.pastille { display: inline-flex; align-items: center; gap: 5px; padding: 2px 9px; border-radius: 99px; font-size: 12px; font-weight: 700; white-space: nowrap; }
+.p-ok { background: var(--ok-bg); color: var(--ok-fg); } .p-warn { background: var(--warn-bg); color: var(--warn-fg); }
+.p-bad { background: var(--bad-bg); color: var(--bad-fg); } .p-info { background: var(--gris-clair); color: var(--texte); }
+.p-marque { background: var(--jaune); color: var(--noir); }
+.tableau { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; }
+th, td { padding: 8px 10px; text-align: left; border-bottom: 1px solid #e6e6e6; font-size: 13px; vertical-align: top; }
+th { background: var(--gris-clair); color: var(--noir); font-size: 11px; text-transform: uppercase; letter-spacing: .4px; white-space: nowrap; }
+td.n { text-align: right; font-variant-numeric: tabular-nums; }
+label { display: block; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .3px; margin: 12px 0 4px; }
+select, input, textarea { width: 100%; font: inherit; color: inherit; border: 1px solid var(--gris); border-radius: 6px; padding: 7px 9px; background: var(--blanc); }
+.btn { border: 1px solid var(--noir); background: var(--blanc); border-radius: 6px; padding: 7px 14px; font: inherit; font-weight: 700; cursor: pointer; }
+.btn.pri { background: var(--jaune); color: var(--noir); }
+.btn[disabled] { opacity: .45; cursor: not-allowed; }
+.rangee { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.liste { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.liste li { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+.note { font-size: 12px; }
+.bloc-etat { max-width: 560px; margin: 12vh auto; padding: 0 20px; }
+.bloc-etat .carte { border-top: 6px solid var(--jaune); }
+.toast { position: fixed; right: 20px; bottom: 20px; background: var(--noir); color: var(--blanc); padding: 12px 18px; border-radius: 8px; font-weight: 700; max-width: 90vw; }
+[hidden] { display: none !important; }
+@media (max-width: 640px) { header { padding: 10px 14px; } main { padding: 16px 14px 60px; } .moi { text-align: left; } }
+</style>

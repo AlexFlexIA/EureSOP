@@ -1,0 +1,95 @@
+// Versions de la campagne : liste, création, verrouillage.
+// Une version est un jeu complet de prévisions. Une seule version est COURANTE par scénario.
+
+var Versions = (function () {
+  function contexte(acteur) {
+    var idCampagne = txt(acteur.campagne['ID campagne']);
+    return { idCampagne: idCampagne, idSortie: Params.idSortie(acteur.campagne) };
+  }
+
+  function lignesCampagne(ctx) {
+    return Store.read(ctx.idSortie, 'VERSIONS').rows.filter(function (r) { return txt(r['ID campagne']) === ctx.idCampagne; });
+  }
+
+  function vue(r) {
+    return {
+      id: txt(r['ID version']),
+      numero: Number(r.Numero),
+      type: norm(r.Type),
+      scenario: txt(r.Scenario),
+      libelle: txt(r.Libelle),
+      statut: norm(r.Statut),
+      dateReunion: txt(r['Date reunion S&OP']),
+      creePar: txt(r['Cree par']),
+      creeLe: txt(r['Cree le']),
+      verrouillee: yes(r.Verrouillee),
+      commentaire: txt(r.Commentaire)
+    };
+  }
+
+  function list(acteur) {
+    Auth.requireCap(acteur, 'consultation');
+    var ctx = contexte(acteur);
+    return lignesCampagne(ctx).map(vue).sort(function (a, b) { return a.numero - b.numero; });
+  }
+
+  function create(acteur, entree, idOperation) {
+    Auth.requireCap(acteur, 'consultation');
+    var type = norm(entree && entree.type);
+    if (SOP.VERSION_TYPES.indexOf(type) < 0) throw new AppError('VERSION_TYPE_INVALIDE', 'Type de version inconnu : ' + txt(entree && entree.type));
+    Auth.requireCap(acteur, SOP.TYPE_CAP[type]);
+    Auth.requireWritable(acteur);
+    var libelle = txt(entree.libelle);
+    if (!libelle) throw new AppError('LIBELLE_OBLIGATOIRE', 'Le libellé de la version est obligatoire.');
+    var scenario = norm(entree.scenario) || 'BASE';
+    var ctx = contexte(acteur);
+
+    return sousVerrou(function () {
+      return Operations.run(ctx.idSortie, acteur, idOperation, function () {
+        var lignes = lignesCampagne(ctx);
+        var numero = lignes.reduce(function (m, r) { return Math.max(m, Number(r.Numero) || 0); }, 0) + 1;
+        var id = 'V' + pad3(numero);
+        lignes.filter(function (r) { return norm(r.Scenario) === scenario && norm(r.Statut) === 'COURANTE'; }).forEach(function (r) {
+          Store.updateRow(ctx.idSortie, 'VERSIONS', r._row, { 'Statut': 'ARCHIVEE' });
+          Journal.log(ctx.idSortie, acteur, 'VERSION_ARCHIVEE', txt(r['ID version']), 'COURANTE', 'ARCHIVEE', 'Remplacée par ' + id, idOperation);
+        });
+        Store.append(ctx.idSortie, 'VERSIONS', [{
+          'ID version': id,
+          'ID campagne': ctx.idCampagne,
+          'Numero': numero,
+          'Type': type,
+          'Scenario': scenario,
+          'Libelle': libelle,
+          'Statut': 'COURANTE',
+          'Date reunion S&OP': txt(entree.dateReunion),
+          'Version coefficients': '',
+          'Cree par': acteur.email,
+          'Cree le': maintenant(),
+          'Verrouillee': type === 'VALIDEE' ? 'OUI' : 'NON',
+          'Commentaire': txt(entree.commentaire)
+        }]);
+        Journal.log(ctx.idSortie, acteur, 'VERSION_CREEE', id, '', type + ' / ' + scenario, libelle, idOperation);
+        return { idVersion: id, numero: numero };
+      });
+    });
+  }
+
+  // Fige une version : elle ne pourra plus être modifiée. Réservé à la capacité de validation.
+  function verrouiller(acteur, idVersion, idOperation) {
+    Auth.requireCap(acteur, 'validation');
+    Auth.requireWritable(acteur);
+    var ctx = contexte(acteur);
+    return sousVerrou(function () {
+      return Operations.run(ctx.idSortie, acteur, idOperation, function () {
+        var r = lignesCampagne(ctx).filter(function (x) { return txt(x['ID version']) === txt(idVersion); })[0];
+        if (!r) throw new AppError('VERSION_INCONNUE', 'Version ' + txt(idVersion) + ' introuvable.');
+        if (yes(r.Verrouillee)) throw new AppError('VERSION_DEJA_VERROUILLEE', 'La version ' + txt(idVersion) + ' est déjà verrouillée.');
+        Store.updateRow(ctx.idSortie, 'VERSIONS', r._row, { 'Verrouillee': 'OUI' });
+        Journal.log(ctx.idSortie, acteur, 'VERSION_VERROUILLEE', txt(idVersion), 'NON', 'OUI', '', idOperation);
+        return { idVersion: txt(idVersion) };
+      });
+    });
+  }
+
+  return { list: list, create: create, verrouiller: verrouiller };
+})();

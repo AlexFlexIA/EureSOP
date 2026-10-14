@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <title>Eureden S&amp;OP</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Nunito+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <?!= include('Styles') ?>
+</head>
+<body>
+  <div class="bandeau" aria-hidden="true"></div>
+  <div class="page">
+    <div id="chargement" class="bloc-etat"><div class="carte"><h1>Eureden S&amp;OP</h1><p class="sub">Chargement…</p></div></div>
+    <div id="erreur" class="bloc-etat" hidden>
+      <div class="carte">
+        <h1>Accès impossible</h1>
+        <p id="erreur-message" class="sub"></p>
+        <p class="note">Code : <span id="erreur-code"></span>. Si le problème persiste, contactez l'administrateur de l'application.</p>
+        <button class="btn" id="erreur-retour" type="button">Réessayer</button>
+      </div>
+    </div>
+    <div id="app" hidden>
+      <header>
+        <div class="logo"><b>Eureden</b><small>S&amp;OP · Prévisions</small></div>
+        <div><span id="entete-campagne" class="pastille p-marque"></span> <span id="entete-statut" class="pastille p-info"></span></div>
+        <div class="spacer"></div>
+        <div class="moi"><b id="entete-utilisateur"></b><span id="entete-roles"></span></div>
+      </header>
+      <nav id="menu" aria-label="Navigation principale"></nav>
+      <main id="contenu"></main>
+    </div>
+  </div>
+  <div id="toast" class="toast" role="status" hidden></div>
+  <?!= include('Client') ?>
+</body>
+</html>

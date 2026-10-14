@@ -274,4 +274,12 @@ if __name__ == "__main__":
             out.append("")
     intro = (root / "docs" / "_intro.md").read_text(encoding="utf-8")
     (root / "docs" / "structure-des-feuilles.md").write_text(intro + "\n# Détail des onglets\n" + "\n".join(out), encoding="utf-8")
+    import json
+    cols = {f: {t: [c[0] for c in v[1]] for t, v in tabs.items()} for f, tabs in FILES}
+    types = {f: {t: [c[1] for c in v[1]] for t, v in tabs.items()} for f, tabs in FILES}
+    (root / "code").mkdir(exist_ok=True)
+    (root / "code" / "Structure.gs").write_text(
+        "// Généré par outils/structure.py. Ne pas modifier à la main.\n"
+        "var SOP_STRUCTURE = " + json.dumps(cols, ensure_ascii=False, indent=1) + ";\n"
+        "var SOP_TYPES = " + json.dumps(types, ensure_ascii=False) + ";\n", encoding="utf-8")
     print(sum(len(t) for _, t in FILES), "onglets")

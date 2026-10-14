@@ -1,0 +1,192 @@
+<script>
+(function () {
+  'use strict';
+  var etat = { session: null, onglet: 'accueil' };
+  var $ = function (s) { return document.querySelector(s); };
+
+  function esc(v) {
+    return String(v === null || v === undefined ? '' : v).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  // Appelle une fonction serveur et renvoie { ok, data } ou { ok: false, code, message }.
+  function appel(nom) {
+    var args = Array.prototype.slice.call(arguments, 1);
+    return new Promise(function (resolve) {
+      google.script.run
+        .withSuccessHandler(resolve)
+        .withFailureHandler(function (e) { resolve({ ok: false, code: 'RESEAU', message: 'Le serveur ne répond pas. Vérifiez votre connexion et réessayez.' }); })
+        [nom].apply(null, args);
+    });
+  }
+
+  function idOperation() {
+    if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+    return 'op-' + Date.now() + '-' + Math.random().toString(16).slice(2);
+  }
+
+  function toast(texte) {
+    var t = $('#toast');
+    t.textContent = texte; t.hidden = false;
+    clearTimeout(toast.t); toast.t = setTimeout(function () { t.hidden = true; }, 3500);
+  }
+
+  function pastille(classe, symbole, texte) {
+    return '<span class="pastille ' + classe + '"><span aria-hidden="true">' + symbole + '</span>' + esc(texte) + '</span>';
+  }
+
+  var LIBELLES_DROITS = {
+    consultation: 'Consulter', correctionPrevision: 'Corriger la prévision', arbitrage: 'Arbitrer et créer des versions',
+    validation: 'Valider et verrouiller une version', correctionHistorique: 'Corriger l\'historique',
+    validationGamme: 'Valider la gamme', voirBudget: 'Voir le budget', configuration: 'Configurer'
+  };
+
+  // ---------- Écrans ----------
+  function ecranAccueil() {
+    var s = etat.session;
+    var droits = Object.keys(LIBELLES_DROITS).map(function (k) {
+      return '<li>' + (s.droits[k] ? pastille('p-ok', '✓', 'Oui') : pastille('p-info', '✕', 'Non')) + ' ' + esc(LIBELLES_DROITS[k]) + '</li>';
+    }).join('');
+    return '<h1>Bonjour</h1><p class="sub">Campagne ' + esc(s.campagne.libelle || s.campagne.id) + '.</p>' +
+      '<div class="grille"><div class="carte"><h2>Votre accès</h2><ul class="liste">' +
+      '<li><b>Adresse</b> ' + esc(s.utilisateur) + '</li><li><b>Rôle</b> ' + s.roles.map(function (r) { return pastille('p-marque', '●', r); }).join(' ') + '</li></ul></div>' +
+      '<div class="carte"><h2>Ce que vous pouvez faire</h2><ul class="liste">' + droits + '</ul></div></div>' +
+      '<p class="note">Version ' + esc(s.version) + ' du socle. Les écrans de prévision, de cadençage et de stock arrivent ensuite.</p>';
+  }
+
+  function ecranVersions() {
+    var s = etat.session;
+    var types = [];
+    if (s.droits.configuration) types.push(['PREV_TC', 'Prévision des TC']);
+    if (s.droits.arbitrage) types.push(['STATISTIQUE', 'Statistique'], ['ARBITREE', 'Arbitrée (comité)']);
+    if (s.droits.validation) types.push(['VALIDEE', 'Validée']);
+    var form = types.length ?
+      '<div class="carte"><h2>Créer une version</h2><form id="form-version" novalidate>' +
+      '<label for="v-type">Type</label><select id="v-type">' + types.map(function (t) { return '<option value="' + t[0] + '">' + esc(t[1]) + '</option>'; }).join('') + '</select>' +
+      '<label for="v-libelle">Libellé</label><input id="v-libelle" maxlength="120" placeholder="Ex. Reprévision après comité d\'octobre">' +
+      '<label for="v-scenario">Scénario</label><input id="v-scenario" value="BASE" maxlength="40">' +
+      '<label for="v-date">Date de la réunion S&amp;OP</label><input id="v-date" type="date">' +
+      '<label for="v-com">Commentaire</label><textarea id="v-com" rows="2"></textarea>' +
+      '<div class="rangee" style="margin-top:14px"><button class="btn pri" id="v-creer" type="submit">Créer la version</button><span id="v-message" class="note" role="status"></span></div></form></div>' :
+      '<p class="note">Votre rôle ne permet pas de créer une version.</p>';
+    return '<h1>Versions</h1><p class="sub">Chaque reprévision est conservée. Une seule version est courante par scénario.</p>' +
+      '<div class="carte"><h2>Versions de la campagne</h2><div class="tableau" id="liste-versions">Chargement…</div></div>' + form;
+  }
+
+  function tableauVersions(liste) {
+    if (!liste.length) return '<p class="note">Aucune version pour cette campagne. Créez la première ci-dessous.</p>';
+    var peutVerrouiller = etat.session.droits.validation && etat.session.campagne.statut !== 'GELEE' && etat.session.campagne.statut !== 'CLOTUREE';
+    return '<table><thead><tr><th>Version</th><th>Type</th><th>Scénario</th><th>Libellé</th><th>Statut</th><th>Créée</th><th></th></tr></thead><tbody>' +
+      liste.slice().reverse().map(function (v) {
+        var statut = v.statut === 'COURANTE' ? pastille('p-ok', '✓', 'Courante') : pastille('p-info', '●', 'Archivée');
+        var verrou = v.verrouillee ? ' ' + pastille('p-marque', '■', 'Verrouillée') : '';
+        var action = !v.verrouillee && peutVerrouiller ? '<button class="btn" data-verrou="' + esc(v.id) + '" type="button">Verrouiller</button>' : '';
+        return '<tr><td><b>' + esc(v.id) + '</b></td><td>' + esc(v.type) + '</td><td>' + esc(v.scenario) + '</td><td>' + esc(v.libelle) +
+          (v.commentaire ? '<br><span class="note">' + esc(v.commentaire) + '</span>' : '') + '</td><td>' + statut + verrou + '</td><td>' + esc(v.creeLe.replace('T', ' ')) + '<br><span class="note">' + esc(v.creePar) + '</span></td><td>' + action + '</td></tr>';
+      }).join('') + '</tbody></table>';
+  }
+
+  function chargerVersions() {
+    appel('apiVersions').then(function (r) {
+      var cible = $('#liste-versions');
+      if (!cible) return;
+      if (!r.ok) { cible.innerHTML = '<p class="note">' + esc(r.message) + '</p>'; return; }
+      cible.innerHTML = tableauVersions(r.data);
+      Array.prototype.forEach.call(cible.querySelectorAll('[data-verrou]'), function (b) {
+        b.onclick = function () {
+          b.disabled = true;
+          appel('apiVerrouillerVersion', b.getAttribute('data-verrou'), idOperation()).then(function (res) {
+            toast(res.ok ? 'Version verrouillée.' : res.message);
+            chargerVersions();
+          });
+        };
+      });
+    });
+  }
+
+  function brancherFormVersion() {
+    var f = $('#form-version');
+    if (!f) return;
+    f.onsubmit = function (e) {
+      e.preventDefault();
+      var bouton = $('#v-creer'), msg = $('#v-message');
+      if (!$('#v-libelle').value.trim()) { msg.textContent = 'Le libellé est obligatoire.'; $('#v-libelle').focus(); return; }
+      bouton.disabled = true; msg.textContent = 'Enregistrement…';
+      appel('apiCreerVersion', {
+        type: $('#v-type').value, libelle: $('#v-libelle').value, scenario: $('#v-scenario').value,
+        dateReunion: $('#v-date').value, commentaire: $('#v-com').value
+      }, idOperation()).then(function (r) {
+        bouton.disabled = false;
+        if (!r.ok) { msg.textContent = r.message; return; }
+        msg.textContent = '';
+        $('#v-libelle').value = ''; $('#v-com').value = '';
+        toast('Version ' + r.data.resultat.idVersion + ' créée.');
+        chargerVersions();
+      });
+    };
+  }
+
+  function ecranControles() {
+    return '<h1>Contrôles de mise en service</h1><p class="sub">Vérifie les classeurs, la campagne et les accès avant l\'ouverture.</p>' +
+      '<div class="carte"><div class="rangee"><button class="btn pri" id="c-lancer" type="button">Lancer les contrôles</button><span id="c-etat" class="note" role="status"></span></div><div id="c-resultats" style="margin-top:12px"></div></div>';
+  }
+
+  function brancherControles() {
+    var b = $('#c-lancer');
+    if (!b) return;
+    b.onclick = function () {
+      b.disabled = true; $('#c-etat').textContent = 'Contrôle en cours…';
+      appel('apiControles').then(function (r) {
+        b.disabled = false; $('#c-etat').textContent = '';
+        if (!r.ok) { $('#c-resultats').innerHTML = '<p>' + esc(r.message) + '</p>'; return; }
+        var classes = { OK: ['p-ok', '✓'], ATTENTION: ['p-warn', '⚠'], ERREUR: ['p-bad', '✕'] };
+        $('#c-resultats').innerHTML = '<div class="tableau"><table><thead><tr><th>Résultat</th><th>Sujet</th><th>Détail</th></tr></thead><tbody>' +
+          r.data.map(function (x) { var c = classes[x.niveau] || classes.ATTENTION; return '<tr><td>' + pastille(c[0], c[1], x.niveau) + '</td><td>' + esc(x.sujet) + '</td><td>' + esc(x.detail) + '</td></tr>'; }).join('') + '</tbody></table></div>';
+      });
+    };
+  }
+
+  // ---------- Navigation ----------
+  function onglets() {
+    var o = [['accueil', 'Accueil'], ['versions', 'Versions']];
+    if (etat.session.droits.configuration) o.push(['controles', 'Contrôles']);
+    return o;
+  }
+
+  function afficher(nom) {
+    etat.onglet = nom;
+    $('#menu').innerHTML = onglets().map(function (o) {
+      return '<button type="button" data-onglet="' + o[0] + '"' + (o[0] === nom ? ' aria-current="page"' : '') + '>' + esc(o[1]) + '</button>';
+    }).join('');
+    Array.prototype.forEach.call($('#menu').querySelectorAll('button'), function (b) { b.onclick = function () { afficher(b.getAttribute('data-onglet')); }; });
+    var c = $('#contenu');
+    if (nom === 'versions') { c.innerHTML = ecranVersions(); chargerVersions(); brancherFormVersion(); }
+    else if (nom === 'controles') { c.innerHTML = ecranControles(); brancherControles(); }
+    else c.innerHTML = ecranAccueil();
+  }
+
+  function demarrer() {
+    $('#chargement').hidden = false; $('#erreur').hidden = true; $('#app').hidden = true;
+    appel('apiDemarrage').then(function (r) {
+      $('#chargement').hidden = true;
+      if (!r.ok) {
+        $('#erreur').hidden = false; $('#erreur-message').textContent = r.message; $('#erreur-code').textContent = r.code;
+        return;
+      }
+      etat.session = r.data;
+      $('#entete-campagne').textContent = r.data.campagne.libelle || r.data.campagne.id;
+      var statut = r.data.campagne.statut;
+      $('#entete-statut').className = 'pastille ' + (statut === 'OUVERTE' ? 'p-ok' : 'p-warn');
+      $('#entete-statut').textContent = (statut === 'OUVERTE' ? '✓ ' : '⚠ ') + statut;
+      $('#entete-utilisateur').textContent = r.data.utilisateur;
+      $('#entete-roles').textContent = r.data.roles.join(', ');
+      $('#app').hidden = false;
+      afficher('accueil');
+    });
+  }
+
+  $('#erreur-retour').onclick = demarrer;
+  demarrer();
+})();
+</script>
