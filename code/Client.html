@@ -52,7 +52,7 @@
       '<div class="grille"><div class="carte"><h2>Votre accès</h2><ul class="liste">' +
       '<li><b>Adresse</b> ' + esc(s.utilisateur) + '</li><li><b>Rôle</b> ' + s.roles.map(function (r) { return pastille('p-marque', '●', r); }).join(' ') + '</li></ul></div>' +
       '<div class="carte"><h2>Ce que vous pouvez faire</h2><ul class="liste">' + droits + '</ul></div></div>' +
-      '<p class="note">Version ' + esc(s.version) + ' du socle. L\'historique et la prévision statistique sont en place ; le cadençage et le stock arrivent ensuite.</p>';
+      '<p class="note">Version ' + esc(s.version) + ' du socle. L\'historique, la prévision statistique et les corrections sont en place ; le cadençage et le stock arrivent ensuite.</p>';
   }
 
   function ecranVersions() {
@@ -203,12 +203,17 @@
   }
 
   function dessinerPrevision(d) {
-    var peutCalculer = etat.session.droits.arbitrage && etat.session.campagne.statut !== 'GELEE' && etat.session.campagne.statut !== 'CLOTUREE';
+    var y = anneesPrevision();
+    var ouverte = etat.session.campagne.statut !== 'GELEE' && etat.session.campagne.statut !== 'CLOTUREE';
+    var peutCalculer = etat.session.droits.arbitrage && ouverte;
     var poids = d.ponderation.join(' / ');
     var action = peutCalculer ?
-      '<div class="rangee" style="margin-top:12px"><button class="btn pri" id="p-calculer" type="button">' + (d.version ? 'Recalculer la prévision statistique' : 'Calculer la prévision statistique') + '</button><span id="p-message" class="note" role="status"></span></div>' +
-      '<p class="note">Pondération (dernière année en premier) : ' + esc(poids) + ', réglage PONDERATION_ANNEES. Un article sans vente la dernière année n\'est pas reconduit. Un recalcul crée une nouvelle version et archive la précédente.</p>' :
+      '<div class="rangee" style="margin-top:12px"><button class="btn" id="p-calculer" type="button">' + (d.version ? 'Recalculer la statistique' : 'Calculer la prévision statistique') + '</button>' +
+      (d.version ? '<button class="btn pri" id="p-arbitrer" type="button">Appliquer les corrections (version arbitrée)</button>' : '') +
+      '<span id="p-message" class="note" role="status"></span></div>' +
+      '<p class="note">Pondération (dernière année en premier) : ' + esc(poids) + ', réglage PONDERATION_ANNEES. Un article sans vente la dernière année n\'est pas reconduit. Chaque calcul crée une nouvelle version et archive la précédente. Les corrections, événements, arrêts et substitutions se saisissent dans l\'onglet Corrections ; ils ne comptent qu\'une fois appliqués ici.</p>' :
       '<p class="note">Votre rôle ne permet pas de lancer le calcul.</p>';
+    var avert = (etat.avertissements || []).length ? '<div class="carte"><h2>Points d\'attention du dernier calcul</h2><ul class="liste">' + etat.avertissements.map(function (a) { return '<li>' + pastille('p-warn', '⚠', 'Attention') + ' ' + esc(a) + '</li>'; }).join('') + '</ul></div>' : '';
     if (!d.version) {
       $('#p-contenu').innerHTML = '<div class="carte"><h2>Aucune prévision pour le moment</h2><p>Le calcul lit l\'historique, crée une version « Statistique » et remplit la prévision.</p>' + action + '</div>';
       brancherCalcul();
@@ -217,29 +222,36 @@
     }
     var v = d.version;
     var entete = '<div class="carte"><h2>Version courante</h2><ul class="liste"><li><b>' + esc(v.id) + '</b> ' + pastille('p-marque', '●', v.type) + (v.verrouillee ? ' ' + pastille('p-marque', '■', 'Verrouillée') : '') + '</li>' +
-      '<li>' + esc(v.libelle) + '</li><li class="note">Créée le ' + esc(v.creeLe.replace('T', ' ')) + ' par ' + esc(v.creePar) + '</li></ul>' + action + '</div>';
-    var tot = '<div class="carte"><h2>Totaux par entité</h2><div class="tableau"><table><thead><tr><th>Entité</th><th>Articles</th><th>Réalisé ' + esc(anneesPrevision().reference || 'année précédente') + '</th><th>Statistique ' + esc(anneesPrevision().prevue || '') + '</th><th>Écart</th></tr></thead><tbody>' +
+      '<li>' + esc(v.libelle) + '</li><li class="note">Créée le ' + esc(v.creeLe.replace('T', ' ')) + ' par ' + esc(v.creePar) + '</li></ul>' + action + '</div>' + avert;
+    var th = function (t) { return '<th>' + t + '</th>'; };
+    var cols = th('Réalisé ' + esc(y.reference || 'précédent')) + th('Statistique ' + esc(y.prevue)) + th('Événements') + th('Corrections') + th('Substitutions') + th('Retenue') + th('Écart');
+    var tot = '<div class="carte"><h2>Totaux par entité</h2><div class="tableau"><table><thead><tr><th>Entité</th><th>Articles</th>' + th('Réalisé ' + esc(y.reference || 'précédent')) + th('Statistique ' + esc(y.prevue)) + th('Retenue') + th('Écart') + '</tr></thead><tbody>' +
       d.totaux.map(function (t) {
-        return '<tr><td>' + esc(t.entite) + '</td><td class="n">' + n0(t.articles) + '</td><td class="n">' + n0(t.n1) + '</td><td class="n">' + n0(t.statistique) + '</td><td>' + variation(t.statistique, t.n1) + '</td></tr>';
-      }).join('') + '</tbody></table></div><p class="note">La quantité additionne des unités de stock différentes (sacs, bidons, kg).</p></div>';
+        return '<tr><td>' + esc(t.entite) + '</td><td class="n">' + n0(t.articles) + '</td><td class="n">' + n0(t.n1) + '</td><td class="n">' + n0(t.statistique) + '</td><td class="n"><b>' + n0(t.retenue) + '</b></td><td>' + variation(t.retenue, t.n1) + '</td></tr>';
+      }).join('') + '</tbody></table></div><p class="note">La quantité additionne des unités de stock différentes (sacs, bidons, kg). L\'écart compare la quantité retenue au réalisé.</p></div>';
     var liste = '<div class="carte"><h2>Articles</h2><div class="grille"><div><label for="p-entite">Entité</label><select id="p-entite"><option value="">Toutes</option>' +
       d.totaux.map(function (t) { return '<option>' + esc(t.entite) + '</option>'; }).join('') + '</select></div>' +
       '<div><label for="p-texte">Rechercher (code ou libellé)</label><input id="p-texte" type="search" maxlength="60"></div></div>' +
+      '<div style="margin-top:10px"><label style="display:inline"><input type="checkbox" id="p-modifies" style="width:auto"> Seulement les articles modifiés par une correction, un événement ou une substitution</label></div>' +
       '<div class="tableau" id="p-table" style="margin-top:12px"></div><p class="note" id="p-note"></p></div>';
     $('#p-contenu').innerHTML = entete + tot + liste;
     brancherCalcul();
     ajouterEssai();
 
     function filtrer() {
-      var e = $('#p-entite').value, q = $('#p-texte').value.trim().toLowerCase();
-      var sel = d.articles.filter(function (a) { return (!e || a.entite === e) && (!q || a.code.toLowerCase().indexOf(q) >= 0 || a.libelle.toLowerCase().indexOf(q) >= 0); });
-      $('#p-table').innerHTML = sel.length ? '<table><thead><tr><th>Code</th><th>Libellé</th><th>Entité</th><th>Réalisé ' + esc(anneesPrevision().reference || 'année précédente') + '</th><th>Statistique ' + esc(anneesPrevision().prevue || '') + '</th><th>Écart</th></tr></thead><tbody>' +
+      var e = $('#p-entite').value, q = $('#p-texte').value.trim().toLowerCase(), m = $('#p-modifies').checked;
+      var sel = d.articles.filter(function (a) {
+        return (!e || a.entite === e) && (!q || a.code.toLowerCase().indexOf(q) >= 0 || a.libelle.toLowerCase().indexOf(q) >= 0) && (!m || a.evenements || a.correction || a.substitution);
+      });
+      var cel = function (x) { return '<td class="n">' + (x ? (x > 0 ? '+' : '') + n0(x) : '–') + '</td>'; };
+      $('#p-table').innerHTML = sel.length ? '<table><thead><tr><th>Code</th><th>Libellé</th><th>Entité</th>' + cols + '</tr></thead><tbody>' +
         sel.slice(0, 200).map(function (a) {
-          return '<tr><td>' + esc(a.code) + '</td><td>' + esc(a.libelle) + '</td><td>' + esc(a.entite) + '</td><td class="n">' + n0(a.n1) + '</td><td class="n">' + n0(a.statistique) + '</td><td>' + variation(a.statistique, a.n1) + '</td></tr>';
+          return '<tr><td>' + esc(a.code) + '</td><td>' + esc(a.libelle) + '</td><td>' + esc(a.entite) + '</td><td class="n">' + n0(a.n1) + '</td><td class="n">' + n0(a.statistique) + '</td>' +
+            cel(a.evenements) + cel(a.correction) + cel(a.substitution) + '<td class="n"><b>' + n0(a.retenue) + '</b></td><td>' + variation(a.retenue, a.n1) + '</td></tr>';
         }).join('') + '</tbody></table>' : '<p class="note">Aucun article ne correspond.</p>';
       $('#p-note').textContent = sel.length + ' article(s)' + (sel.length > 200 ? ', 200 affichés : affinez la recherche' : '') + (d.tronque ? ' · ' + d.nbArticles + ' articles au total, les ' + d.articles.length + ' premiers par quantité sont chargés' : '') + '.';
     }
-    $('#p-entite').onchange = filtrer; $('#p-texte').oninput = filtrer; filtrer();
+    $('#p-entite').onchange = filtrer; $('#p-texte').oninput = filtrer; $('#p-modifies').onchange = filtrer; filtrer();
   }
 
   function ajouterEssai() {
@@ -267,17 +279,24 @@
   }
 
   function brancherCalcul() {
-    var b = $('#p-calculer');
-    if (!b) return;
-    b.onclick = function () {
-      var msg = $('#p-message');
-      b.disabled = true; msg.textContent = 'Calcul en cours, cela peut durer une minute…';
-      appel('apiCalculerStatistique', {}, idOperation()).then(function (r) {
-        if (!r.ok) { b.disabled = false; msg.textContent = r.message; return; }
-        toast('Version ' + r.data.resultat.idVersion + ' créée, ' + r.data.resultat.lignes + ' lignes.');
-        chargerPrevision();
-      });
-    };
+    [['#p-calculer', 'apiCalculerStatistique', 'Statistique'], ['#p-arbitrer', 'apiArbitrer', 'Arbitrée']].forEach(function (def) {
+      var b = $(def[0]);
+      if (!b) return;
+      b.onclick = function () {
+        var msg = $('#p-message');
+        Array.prototype.forEach.call(document.querySelectorAll('#p-calculer, #p-arbitrer'), function (x) { x.disabled = true; });
+        msg.textContent = 'Calcul en cours, cela peut durer une minute…';
+        appel(def[1], {}, idOperation()).then(function (r) {
+          if (!r.ok) {
+            Array.prototype.forEach.call(document.querySelectorAll('#p-calculer, #p-arbitrer'), function (x) { x.disabled = false; });
+            msg.textContent = r.message; return;
+          }
+          etat.avertissements = r.data.resultat.avertissements || [];
+          toast('Version ' + r.data.resultat.idVersion + ' créée, ' + r.data.resultat.lignes + ' lignes.');
+          chargerPrevision();
+        });
+      };
+    });
   }
 
   function chargerPrevision() {
@@ -286,6 +305,112 @@
       if (!c) return;
       if (!r.ok) { c.innerHTML = '<div class="carte"><h2>Prévision indisponible</h2><p>' + esc(r.message) + '</p><p class="note">Code : ' + esc(r.code) + '</p></div>'; return; }
       dessinerPrevision(r.data);
+    });
+  }
+
+  // ---------- Corrections, événements, arrêts, substitutions ----------
+  var NATURES = {
+    CORRECTION: { libelle: 'Correction', aide: 'Ajoute ou retire une quantité (ou un pourcentage) sur un article, avec son motif.' },
+    EVENEMENT: { libelle: 'Événement commercial', aide: 'Polco, promotion, grand compte, appel d\'offres, mesure réglementaire : un apport du commerce.' },
+    ARRET: { libelle: 'Arrêt de produit', aide: 'L\'article disparaît : sa prévision tombe à zéro (ou d\'un taux). Rien n\'est reporté.' },
+    SUBSTITUTION: { libelle: 'Substitution', aide: 'Une part des ventes d\'un ancien article passe sur un nouvel article.' }
+  };
+  var TYPES_EVT = [['POLCO', 'Polco'], ['PROMO', 'Promotion'], ['GRAND_COMPTE', 'Grand compte'], ['APPEL_OFFRES', 'Appel d\'offres'], ['REGLEMENTAIRE', 'Réglementaire']];
+
+  function champ(id, libelle, type, extra) {
+    return '<div><label for="a-' + id + '">' + libelle + '</label><input id="a-' + id + '" type="' + (type || 'text') + '" maxlength="120" ' + (extra || '') + '></div>';
+  }
+  function liste(id, libelle, options) {
+    return '<div><label for="a-' + id + '">' + libelle + '</label><select id="a-' + id + '">' + options.map(function (o) { return '<option value="' + esc(o[0]) + '">' + esc(o[1]) + '</option>'; }).join('') + '</select></div>';
+  }
+
+  function formulaire(nature, entites) {
+    var ent = function (obligatoire) { return liste('entite', 'Entité', (obligatoire ? [] : [['', 'Toutes']]).concat(entites.map(function (e) { return [e, e]; }))); };
+    var semaines = champ('sd', 'Semaine de début (facultatif)', 'text', 'placeholder="2027-S06"') + champ('sf', 'Semaine de fin (facultatif)', 'text', 'placeholder="2027-S10"');
+    var impact = champ('qte', 'Quantité (+ ou −)', 'text', 'inputmode="decimal"') + champ('pct', 'ou pourcentage (+ ou −)', 'text', 'inputmode="decimal"');
+    var dates = champ('de', 'Date d\'effet (facultatif)', 'date') + champ('df', 'Date de fin (facultatif)', 'date');
+    if (nature === 'CORRECTION') return ent(true) + champ('code', 'Code produit') + impact + champ('motif', 'Motif (obligatoire)') + semaines;
+    if (nature === 'EVENEMENT') return liste('type', 'Type', TYPES_EVT) + ent(true) + champ('code', 'Code produit') + impact + champ('com', 'Commentaire') + semaines;
+    if (nature === 'ARRET') return champ('ancien', 'Code du produit arrêté') + ent(false) + champ('taux', 'Part retirée, % (100 par défaut)', 'text', 'inputmode="decimal"') + dates + champ('com', 'Commentaire');
+    return champ('ancien', 'Code de l\'ancien produit') + champ('nouveau', 'Code du nouveau produit') + ent(false) + champ('taux', 'Part reportée, % (100 par défaut)', 'text', 'inputmode="decimal"') +
+      liste('motif', 'Motif', [['REMPLACEMENT', 'Remplacement'], ['REGLEMENTAIRE', 'Réglementaire'], ['AUTRE', 'Autre']]) + dates + champ('com', 'Commentaire');
+  }
+
+  function ecranCorrections() {
+    return '<h1>Corrections et événements</h1><p class="sub">Ce que vous saisissez ici n\'agit sur la prévision qu\'une fois la version arbitrée créée, dans l\'écran Prévision.</p><div id="a-contenu"><div class="carte">Chargement…</div></div>';
+  }
+
+  function peutSaisir(nature) {
+    var d = etat.session.droits, ouverte = etat.session.campagne.statut !== 'GELEE' && etat.session.campagne.statut !== 'CLOTUREE';
+    if (!ouverte) return false;
+    return nature === 'ARRET' || nature === 'SUBSTITUTION' ? (d.validationGamme || d.arbitrage) : d.correctionPrevision;
+  }
+
+  function tableauSaisies(titre, vide, entete, lignes, nature) {
+    return '<div class="carte"><h2>' + titre + '</h2>' + (lignes.length ? '<div class="tableau"><table><thead><tr>' + entete + '<th></th></tr></thead><tbody>' + lignes.map(function (l) {
+      return '<tr>' + l.cellules + '<td>' + (peutSaisir(nature) ? '<button class="btn" data-annuler="' + esc(l.id) + '" data-nature="' + nature + '" type="button">Annuler</button>' : '') + '</td></tr>';
+    }).join('') + '</tbody></table></div>' : '<p class="note">' + vide + '</p>') + '</div>';
+  }
+
+  function dessinerCorrections(d) {
+    var q = function (v) { return v === '' ? '–' : (Number(v) > 0 ? '+' : '') + n0(Number(v)); };
+    var impact = function (x) { return x.quantite !== '' ? q(x.quantite) : q(x.pourcent) + ' %'; };
+    var natures = Object.keys(NATURES).filter(peutSaisir);
+    var form = natures.length ? '<div class="carte"><h2>Nouvelle saisie</h2><label for="a-nature">Nature</label><select id="a-nature">' +
+      natures.map(function (n) { return '<option value="' + n + '">' + esc(NATURES[n].libelle) + '</option>'; }).join('') + '</select><p class="note" id="a-aide"></p>' +
+      '<form id="a-form" novalidate><div class="grille" id="a-champs"></div><div class="rangee" style="margin-top:14px"><button class="btn pri" type="submit" id="a-envoyer">Enregistrer</button><span id="a-message" class="note" role="status"></span></div></form></div>' :
+      '<div class="carte"><p class="note">Votre rôle ne permet pas de saisir de correction ou d\'événement (périmètre global requis).</p></div>';
+    var c = tableauSaisies('Corrections actives', 'Aucune correction.', '<th>Numéro</th><th>Produit</th><th>Entité</th><th>Impact</th><th>Motif</th><th>Saisie par</th>',
+      d.corrections.map(function (x) { return { id: x.id, cellules: '<td>' + esc(x.id) + '</td><td>' + esc(x.code) + '</td><td>' + esc(x.entite) + '</td><td class="n">' + impact(x) + '</td><td>' + esc(x.motif) + '</td><td>' + esc(x.par) + '</td>' }; }), 'CORRECTION');
+    var e = tableauSaisies('Événements actifs', 'Aucun événement.', '<th>Numéro</th><th>Type</th><th>Produit</th><th>Entité</th><th>Impact</th><th>Commentaire</th><th>Saisi par</th>',
+      d.evenements.map(function (x) { return { id: x.id, cellules: '<td>' + esc(x.id) + '</td><td>' + esc(x.type) + '</td><td>' + esc(x.code) + '</td><td>' + esc(x.entite) + '</td><td class="n">' + impact(x) + '</td><td>' + esc(x.commentaire) + '</td><td>' + esc(x.par) + '</td>' }; }), 'EVENEMENT');
+    var sb = tableauSaisies('Arrêts de produit et substitutions actifs', 'Aucun arrêt ni substitution.', '<th>Numéro</th><th>Nature</th><th>Ancien</th><th>Nouveau</th><th>Entité</th><th>Taux</th><th>Période</th><th>Commentaire</th>',
+      d.substitutions.map(function (x) { return { id: x.id, cellules: '<td>' + esc(x.id) + '</td><td>' + (x.nature === 'ARRET' ? pastille('p-warn', '■', 'Arrêt') : pastille('p-info', '→', 'Substitution')) + '</td><td>' + esc(x.ancien) + '</td><td>' + esc(x.nouveau || '–') + '</td><td>' + esc(x.entite || 'Toutes') + '</td><td class="n">' + esc(x.taux) + ' %</td><td>' + esc((x.effet || '') + (x.fin ? ' → ' + x.fin : '')) + '</td><td>' + esc(x.commentaire) + '</td>' }; }), 'SUBSTITUTION');
+    $('#a-contenu').innerHTML = form + c + e + sb +
+      '<p class="note">Les arrêts et substitutions sont aussi visibles dans l\'onglet SUBSTITUTIONS des paramètres : ils valent pour toutes les campagnes tant qu\'ils sont actifs et dans leur période. Pas de chaînage : un report ne se répercute pas sur un autre report.</p>';
+
+    function champs() {
+      var n = $('#a-nature').value;
+      $('#a-aide').textContent = NATURES[n].aide;
+      $('#a-champs').innerHTML = formulaire(n, d.entites);
+      $('#a-message').textContent = '';
+    }
+    if ($('#a-nature')) { $('#a-nature').onchange = champs; champs(); }
+
+    var f = $('#a-form');
+    if (f) f.onsubmit = function (ev) {
+      ev.preventDefault();
+      var n = $('#a-nature').value, g = function (id) { var x = $('#a-' + id); return x ? x.value.trim() : ''; };
+      var entree = { nature: n, entite: g('entite'), code: g('code'), ancien: g('ancien'), nouveau: g('nouveau'), type: g('type'), quantite: g('qte'), pourcent: g('pct'),
+        motif: g('motif'), commentaire: g('com'), semaineDebut: g('sd'), semaineFin: g('sf'), taux: g('taux'), dateEffet: g('de'), dateFin: g('df') };
+      var b = $('#a-envoyer'), msg = $('#a-message');
+      b.disabled = true; msg.textContent = 'Enregistrement…';
+      appel('apiAjouterAjustement', entree, idOperation()).then(function (r) {
+        b.disabled = false;
+        if (!r.ok) { msg.textContent = r.message; return; }
+        var res = r.data.resultat;
+        toast('Saisie ' + res.id + ' enregistrée.' + (res.avertissement ? ' ' + res.avertissement : ''));
+        chargerCorrections();
+      });
+    };
+    Array.prototype.forEach.call(document.querySelectorAll('[data-annuler]'), function (b) {
+      b.onclick = function () {
+        if (!window.confirm('Annuler la saisie ' + b.getAttribute('data-annuler') + ' ?')) return;
+        b.disabled = true;
+        appel('apiAnnulerAjustement', b.getAttribute('data-nature'), b.getAttribute('data-annuler'), idOperation()).then(function (r) {
+          toast(r.ok ? 'Saisie annulée.' : r.message);
+          chargerCorrections();
+        });
+      };
+    });
+  }
+
+  function chargerCorrections() {
+    appel('apiAjustements').then(function (r) {
+      var c = $('#a-contenu');
+      if (!c) return;
+      if (!r.ok) { c.innerHTML = '<div class="carte"><h2>Saisies indisponibles</h2><p>' + esc(r.message) + '</p><p class="note">Code : ' + esc(r.code) + '</p></div>'; return; }
+      dessinerCorrections(r.data);
     });
   }
 
@@ -311,7 +436,7 @@
 
   // ---------- Navigation ----------
   function onglets() {
-    var o = [['accueil', 'Accueil'], ['historique', 'Historique'], ['prevision', 'Prévision'], ['versions', 'Versions']];
+    var o = [['accueil', 'Accueil'], ['historique', 'Historique'], ['corrections', 'Corrections'], ['prevision', 'Prévision'], ['versions', 'Versions']];
     if (etat.session.droits.configuration) o.push(['controles', 'Contrôles']);
     return o;
   }
@@ -324,6 +449,7 @@
     Array.prototype.forEach.call($('#menu').querySelectorAll('button'), function (b) { b.onclick = function () { afficher(b.getAttribute('data-onglet')); }; });
     var c = $('#contenu');
     if (nom === 'historique') { c.innerHTML = ecranHistorique(); chargerHistorique(); }
+    else if (nom === 'corrections') { c.innerHTML = ecranCorrections(); chargerCorrections(); }
     else if (nom === 'prevision') { c.innerHTML = ecranPrevision(); chargerPrevision(); }
     else if (nom === 'versions') { c.innerHTML = ecranVersions(); chargerVersions(); brancherFormVersion(); }
     else if (nom === 'controles') { c.innerHTML = ecranControles(); brancherControles(); }

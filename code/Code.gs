@@ -74,3 +74,19 @@ function apiCalculerStatistique(entree, idOperation) {
 function apiEssaiPonderation() {
   return reponse_(function () { return Previsions.essai(Auth.resolve()); });
 }
+
+function apiArbitrer(entree, idOperation) {
+  return reponse_(function () { return Previsions.arbitrer(Auth.resolve(), entree || {}, idOperation); });
+}
+
+function apiAjustements() {
+  return reponse_(function () { return Ajustements.lister(Auth.resolve()); });
+}
+
+function apiAjouterAjustement(entree, idOperation) {
+  return reponse_(function () { return Ajustements.creer(Auth.resolve(), entree, idOperation); });
+}
+
+function apiAnnulerAjustement(nature, id, idOperation) {
+  return reponse_(function () { return Ajustements.annuler(Auth.resolve(), nature, id, idOperation); });
+}

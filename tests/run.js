@@ -565,11 +565,12 @@ test('calcul statistique : refusé si la version courante est verrouillée', () 
   env.run("apiVerrouillerVersion('V001', 'op2')");
   assert.strictEqual(env.run("apiCalculerStatistique({}, 'op3')").code, 'VERSION_VERROUILLEE');
 });
-test('calcul statistique : refusé si des quantités de travail existent', () => {
+test('calcul statistique : refusé si des quantités validées existent', () => {
   const env = envPrev(); env.moi('guillaume@eureden.com');
   env.run("apiCalculerStatistique({}, 'op1')");
-  env.feuille('SORTIE1', 'PREVISION')._data[1][env.feuille('SORTIE1', 'PREVISION')._data[0].indexOf('Qte arbitree')] = 123;
-  assert.strictEqual(env.run("apiCalculerStatistique({}, 'op2')").code, 'PREVISION_TRAVAILLEE');
+  const f = env.feuille('SORTIE1', 'PREVISION');
+  f._data[1][f._data[0].indexOf('Qte validee')] = 123;
+  assert.strictEqual(env.run("apiCalculerStatistique({}, 'op2')").code, 'PREVISION_VALIDEE');
   assert.strictEqual(env.lignes('SORTIE1', 'VERSIONS').length, 1);
 });
 test('précision : réglage vide = 3 décimales, réglage 0 = entiers', () => {
@@ -639,6 +640,209 @@ test('prévision courante : un TC n\'en voit rien', () => {
   env.run("apiCalculerStatistique({}, 'op1')");
   env.moi('tc.ok@eureden.com');
   assert.strictEqual(env.run('apiPrevision()').data.articles.length, 0);
+});
+
+// ---------- Corrections, événements, arrêts, substitutions ----------
+const DAP = '1109939', ONA_ART = '2200001';
+const ajout = (env, o, op) => env.run('apiAjouterAjustement(' + JSON.stringify(o) + ", '" + op + "')");
+const prevLigne = (env, code, entite) => env.lignes('SORTIE1', 'PREVISION').filter((x) => x['Code produit'] === code && (!entite || x.Entite === entite))[0];
+const STAT_DAP = 16345.188;
+
+test('correction : enregistrée avec l\'entité exacte, effet seulement après arbitrage', () => {
+  const env = envPrev(); env.moi('guillaume@eureden.com');
+  env.run("apiCalculerStatistique({}, 'op0')");
+  const r = ajout(env, { nature: 'CORRECTION', code: DAP, entite: 'coop eureden', quantite: -1000, motif: 'Perte d\'un client' }, 'c1');
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(r.data.resultat.id, 'COR0001');
+  const l = env.lignes('SORTIE1', 'AJUSTEMENTS_SEMAINE')[0];
+  assert.strictEqual(l.Entite, 'Coop EUREDEN');
+  assert.strictEqual(l.Quantite, -1000);
+  assert.strictEqual(l.Statut, 'ACTIF');
+  assert.strictEqual(prevLigne(env, DAP)['Qte correction'], '');
+});
+test('correction : motif, impact, semaines et entité contrôlés', () => {
+  const env = envPrev(); env.moi('guillaume@eureden.com');
+  const code = (o) => ajout(env, Object.assign({ nature: 'CORRECTION', code: DAP, entite: 'Coop EUREDEN', quantite: 10, motif: 'm' }, o), 'x' + Math.random()).code;
+  assert.strictEqual(code({ motif: '' }), 'MOTIF_OBLIGATOIRE');
+  assert.strictEqual(code({ pourcent: 5 }), 'IMPACT_INVALIDE');
+  assert.strictEqual(code({ quantite: '' }), 'IMPACT_INVALIDE');
+  assert.strictEqual(code({ quantite: 0 }), 'IMPACT_INVALIDE');
+  assert.strictEqual(code({ quantite: '', pourcent: -150 }), 'IMPACT_INVALIDE');
+  assert.strictEqual(code({ semaineDebut: '2027-6' }), 'SEMAINE_INVALIDE');
+  assert.strictEqual(code({ semaineDebut: '2027-S10', semaineFin: '2027-S02' }), 'SEMAINE_INVALIDE');
+  assert.strictEqual(code({ entite: 'Inconnue' }), 'ENTITE_INCONNUE');
+  assert.strictEqual(code({ code: '' }), 'CODE_OBLIGATOIRE');
+  assert.strictEqual(env.lignes('SORTIE1', 'AJUSTEMENTS_SEMAINE').length, 0);
+});
+test('correction : article absent de la prévision signalé en avertissement', () => {
+  const env = envPrev(); env.moi('guillaume@eureden.com');
+  env.run("apiCalculerStatistique({}, 'op0')");
+  const r = ajout(env, { nature: 'CORRECTION', code: '9999999', entite: 'Coop EUREDEN', quantite: 5, motif: 'Nouveau' }, 'c1');
+  assert.ok(/n'est pas dans la prévision/.test(r.data.resultat.avertissement));
+});
+test('arbitrage : correction en quantité et événement en pourcentage', () => {
+  const env = envPrev(); env.moi('guillaume@eureden.com');
+  env.run("apiCalculerStatistique({}, 'op0')");
+  ajout(env, { nature: 'CORRECTION', code: DAP, entite: 'Coop EUREDEN', quantite: -1000, motif: 'Perte client' }, 'c1');
+  ajout(env, { nature: 'EVENEMENT', type: 'PROMO', code: ONA_ART, entite: 'NEGOCE ONA', pourcent: 10 }, 'e1');
+  const r = env.run("apiArbitrer({}, 'a1')");
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(r.data.resultat.idVersion, 'V002');
+  assert.strictEqual(r.data.resultat.corrections, 1);
+  assert.strictEqual(r.data.resultat.evenements, 1);
+  const d = prevLigne(env, DAP), o = prevLigne(env, ONA_ART);
+  assert.strictEqual(d.Statut, 'ARBITREE');
+  assert.strictEqual(d['Qte correction'], -1000);
+  assert.strictEqual(d['Qte arbitree'], STAT_DAP - 1000);
+  assert.strictEqual(o['Qte evenements'], 5);
+  assert.strictEqual(o['Qte arbitree'], 55);
+  const v = env.lignes('SORTIE1', 'VERSIONS');
+  assert.strictEqual(v[0].Statut, 'ARCHIVEE');
+  assert.strictEqual(v[1].Type, 'ARBITREE');
+});
+test('substitution : le report passe de l\'ancien vers un nouvel article sans historique', () => {
+  const env = envPrev(); env.moi('guillaume@eureden.com');
+  const r0 = ajout(env, { nature: 'SUBSTITUTION', ancien: DAP, nouveau: '3300003', entite: 'Coop EUREDEN', taux: 50, motif: 'REMPLACEMENT' }, 's1');
+  assert.strictEqual(r0.ok, true);
+  assert.strictEqual(r0.data.resultat.id, 'SUB_001');
+  assert.strictEqual(env.lignes('PARAM_FICHIER_TEST_00001', 'SUBSTITUTIONS')[0]['Renseigne par'], 'guillaume@eureden.com');
+  env.run("apiArbitrer({}, 'a1')");
+  const ancien = prevLigne(env, DAP), nouveau = prevLigne(env, '3300003');
+  assert.strictEqual(ancien['Qte substitution'], -8172.594);
+  assert.strictEqual(ancien['Qte arbitree'], STAT_DAP - 8172.594);
+  assert.strictEqual(nouveau['Qte historique corrigee N-1'], 0);
+  assert.strictEqual(nouveau['Qte substitution'], 8172.594);
+  assert.strictEqual(nouveau['Qte arbitree'], 8172.594);
+});
+test('arrêt de produit : l\'article tombe à zéro sans report', () => {
+  const env = envPrev(); env.moi('guillaume@eureden.com');
+  ajout(env, { nature: 'ARRET', ancien: ONA_ART, entite: 'NEGOCE ONA', commentaire: 'Arrêt Minarix' }, 's1');
+  const l = env.lignes('PARAM_FICHIER_TEST_00001', 'SUBSTITUTIONS')[0];
+  assert.strictEqual(l['Code nouveau'], '');
+  assert.strictEqual(l.Motif, 'ARRET');
+  assert.strictEqual(l['Taux de report'], 100);
+  env.run("apiArbitrer({}, 'a1')");
+  const o = prevLigne(env, ONA_ART);
+  assert.strictEqual(o['Qte substitution'], -50);
+  assert.strictEqual(o['Qte arbitree'], 0);
+});
+test('substitution : entité vide = toutes les entités qui ont l\'article', () => {
+  const env = envPrev(); env.moi('guillaume@eureden.com');
+  ajout(env, { nature: 'ARRET', ancien: ONA_ART }, 's1');
+  env.run("apiArbitrer({}, 'a1')");
+  assert.strictEqual(prevLigne(env, ONA_ART)['Qte arbitree'], 0);
+  assert.strictEqual(prevLigne(env, DAP)['Qte arbitree'], STAT_DAP);
+});
+test('substitution : ancien et nouveau identiques, taux et dates invalides refusés', () => {
+  const env = envPrev(); env.moi('guillaume@eureden.com');
+  const code = (o) => ajout(env, Object.assign({ nature: 'SUBSTITUTION', ancien: DAP, nouveau: '3300003' }, o), 'x' + Math.random()).code;
+  assert.strictEqual(code({ nouveau: DAP }), 'SUBSTITUTION_INVALIDE');
+  assert.strictEqual(code({ nouveau: '' }), 'CODE_OBLIGATOIRE');
+  assert.strictEqual(code({ taux: 0 }), 'TAUX_INVALIDE');
+  assert.strictEqual(code({ taux: 120 }), 'TAUX_INVALIDE');
+  assert.strictEqual(code({ dateEffet: '01/01/2027' }), 'DATE_INVALIDE');
+  assert.strictEqual(code({ motif: 'N IMPORTE QUOI' }), 'TYPE_INVALIDE');
+  assert.strictEqual(env.lignes('PARAM_FICHIER_TEST_00001', 'SUBSTITUTIONS').length, 0);
+});
+test('substitution : une fin avant l\'année de prévision, ou un début après, ne s\'applique pas', () => {
+  const env = envPrev(); env.moi('guillaume@eureden.com');
+  env.feuille('PARAM_FICHIER_TEST_00001', 'CAMPAGNES')._data[1][3] = 2027;
+  ajout(env, { nature: 'ARRET', ancien: ONA_ART, dateFin: '2025-12-31' }, 's1');
+  ajout(env, { nature: 'ARRET', ancien: DAP, dateEffet: '2028-01-01' }, 's2');
+  env.run("apiArbitrer({}, 'a1')");
+  assert.strictEqual(prevLigne(env, ONA_ART)['Qte arbitree'], 50);
+  assert.strictEqual(prevLigne(env, DAP)['Qte arbitree'], STAT_DAP);
+});
+test('substitution : pas de chaînage, chaque report part de la statistique', () => {
+  const env = envPrev(); env.moi('guillaume@eureden.com');
+  ajout(env, { nature: 'SUBSTITUTION', ancien: DAP, nouveau: 'B', entite: 'Coop EUREDEN' }, 's1');
+  ajout(env, { nature: 'SUBSTITUTION', ancien: 'B', nouveau: 'C', entite: 'Coop EUREDEN' }, 's2');
+  const r = env.run("apiArbitrer({}, 'a1')").data.resultat;
+  assert.strictEqual(prevLigne(env, 'C'), undefined);
+  assert.strictEqual(prevLigne(env, 'B')['Qte arbitree'], STAT_DAP);
+  assert.ok(r.avertissements.some((a) => /n'a pas de prévision statistique/.test(a)));
+});
+test('arbitrage : quantité négative ramenée à 0 avec avertissement', () => {
+  const env = envPrev(); env.moi('guillaume@eureden.com');
+  ajout(env, { nature: 'CORRECTION', code: ONA_ART, entite: 'NEGOCE ONA', quantite: -99999, motif: 'Test' }, 'c1');
+  const r = env.run("apiArbitrer({}, 'a1')").data.resultat;
+  assert.strictEqual(prevLigne(env, ONA_ART)['Qte arbitree'], 0);
+  assert.ok(r.avertissements.some((a) => /sous zéro/.test(a)));
+});
+test('annulation : la saisie n\'a plus d\'effet et ne peut être annulée deux fois', () => {
+  const env = envPrev(); env.moi('guillaume@eureden.com');
+  ajout(env, { nature: 'CORRECTION', code: DAP, entite: 'Coop EUREDEN', quantite: -1000, motif: 'm' }, 'c1');
+  ajout(env, { nature: 'EVENEMENT', type: 'POLCO', code: DAP, entite: 'Coop EUREDEN', quantite: 200 }, 'e1');
+  ajout(env, { nature: 'ARRET', ancien: ONA_ART }, 's1');
+  assert.strictEqual(env.run("apiAnnulerAjustement('CORRECTION', 'COR0001', 'n1')").ok, true);
+  assert.strictEqual(env.run("apiAnnulerAjustement('EVENEMENT', 'EVT0001', 'n2')").ok, true);
+  assert.strictEqual(env.run("apiAnnulerAjustement('SUBSTITUTION', 'SUB_001', 'n3')").ok, true);
+  assert.strictEqual(env.run("apiAnnulerAjustement('CORRECTION', 'COR0001', 'n4')").code, 'DEJA_ANNULE');
+  assert.strictEqual(env.run("apiAnnulerAjustement('CORRECTION', 'COR9999', 'n5')").code, 'AJUSTEMENT_INCONNU');
+  env.run("apiArbitrer({}, 'a1')");
+  assert.strictEqual(prevLigne(env, DAP)['Qte arbitree'], STAT_DAP + 0);
+  assert.strictEqual(prevLigne(env, ONA_ART)['Qte arbitree'], 50);
+  const l = env.lignes('SORTIE1', 'AJUSTEMENTS_SEMAINE')[0];
+  assert.strictEqual(l.Statut, 'ANNULE');
+  assert.strictEqual(l['Annule par'], 'guillaume@eureden.com');
+  assert.strictEqual(env.lignes('SORTIE1', 'EVENEMENTS_COMMERCE')[0].Actif, 'NON');
+});
+test('ajustements : liste des saisies actives seulement', () => {
+  const env = envPrev(); env.moi('guillaume@eureden.com');
+  ajout(env, { nature: 'CORRECTION', code: DAP, entite: 'Coop EUREDEN', quantite: -1, motif: 'a' }, 'c1');
+  ajout(env, { nature: 'CORRECTION', code: DAP, entite: 'Coop EUREDEN', quantite: -2, motif: 'b' }, 'c2');
+  ajout(env, { nature: 'ARRET', ancien: ONA_ART }, 's1');
+  env.run("apiAnnulerAjustement('CORRECTION', 'COR0001', 'n1')");
+  const r = env.run('apiAjustements()').data;
+  assert.strictEqual(r.corrections.length, 1);
+  assert.strictEqual(r.corrections[0].id, 'COR0002');
+  assert.strictEqual(r.substitutions[0].nature, 'ARRET');
+  assert.deepStrictEqual(r.entites, ['Coop EUREDEN', 'NEGOCE ONA']);
+});
+test('ajustements : rejouer la même opération n\'ajoute rien', () => {
+  const env = envPrev(); env.moi('guillaume@eureden.com');
+  ajout(env, { nature: 'CORRECTION', code: DAP, entite: 'Coop EUREDEN', quantite: -1, motif: 'a' }, 'c1');
+  const r = ajout(env, { nature: 'CORRECTION', code: DAP, entite: 'Coop EUREDEN', quantite: -1, motif: 'a' }, 'c1');
+  assert.strictEqual(r.data.rejoue, true);
+  assert.strictEqual(env.lignes('SORTIE1', 'AJUSTEMENTS_SEMAINE').length, 1);
+});
+test('ajustements : droits par rôle et périmètre', () => {
+  const env = envPrev();
+  env.moi('rm.engrais@eureden.com');
+  assert.strictEqual(ajout(env, { nature: 'CORRECTION', code: DAP, entite: 'Coop EUREDEN', quantite: 1, motif: 'm' }, 'r1').code, 'CAPACITE_REFUSEE');
+  assert.strictEqual(ajout(env, { nature: 'ARRET', ancien: DAP }, 'r2').code, 'CAPACITE_REFUSEE');
+  env.moi('tc.ok@eureden.com');
+  assert.strictEqual(ajout(env, { nature: 'CORRECTION', code: DAP, entite: 'Coop EUREDEN', quantite: 1, motif: 'm' }, 'r3').code, 'CAPACITE_REFUSEE');
+  assert.strictEqual(env.run("apiArbitrer({}, 'r4')").code, 'CAPACITE_REFUSEE');
+  assert.strictEqual(env.lignes('SORTIE1', 'AJUSTEMENTS_SEMAINE').length, 0);
+});
+test('ajustements : refusés quand la campagne est gelée', () => {
+  const env = envPrev(); env.moi('guillaume@eureden.com');
+  env.feuille('PARAM_FICHIER_TEST_00001', 'CAMPAGNES')._data[1][10] = 'GELEE';
+  assert.strictEqual(ajout(env, { nature: 'ARRET', ancien: DAP }, 's1').code, 'CAMPAGNE_FERMEE');
+});
+test('recalcul statistique après arbitrage : colonnes d\'effet vidées, saisies conservées', () => {
+  const env = envPrev(); env.moi('guillaume@eureden.com');
+  ajout(env, { nature: 'CORRECTION', code: DAP, entite: 'Coop EUREDEN', quantite: -1000, motif: 'm' }, 'c1');
+  env.run("apiArbitrer({}, 'a1')");
+  env.run("apiCalculerStatistique({}, 's1')");
+  const d = prevLigne(env, DAP);
+  assert.strictEqual(d.Statut, 'STATISTIQUE');
+  assert.strictEqual(d['Qte correction'], '');
+  assert.strictEqual(d['Qte arbitree'], '');
+  assert.strictEqual(env.lignes('SORTIE1', 'AJUSTEMENTS_SEMAINE')[0].Statut, 'ACTIF');
+});
+test('prévision courante : colonnes détaillées et quantité retenue', () => {
+  const env = envPrev(); env.moi('guillaume@eureden.com');
+  ajout(env, { nature: 'CORRECTION', code: DAP, entite: 'Coop EUREDEN', quantite: -1000, motif: 'm' }, 'c1');
+  env.run("apiArbitrer({}, 'a1')");
+  const r = env.run('apiPrevision()').data;
+  const d = r.articles.filter((x) => x.code === DAP)[0];
+  assert.strictEqual(d.correction, -1000);
+  assert.strictEqual(d.retenue, STAT_DAP - 1000);
+  assert.strictEqual(r.version.type, 'ARBITREE');
+  const eur = r.totaux.filter((t) => t.entite === 'Coop EUREDEN')[0];
+  assert.strictEqual(eur.retenue, STAT_DAP - 1000);
 });
 
 let echecs = 0;

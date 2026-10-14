@@ -5,7 +5,7 @@
 # Conventions (reprises d'EurePrev) : noms d'onglets en MAJUSCULES_SANS_ACCENT, en-têtes sans accent,
 # codes et identifiants en TEXTE, OUI/NON en majuscules, vide = absence de valeur (jamais zéro).
 
-STRUCTURE_VERSION = "0.8"
+STRUCTURE_VERSION = "0.9"
 T, E, D, DT, B = "TEXTE", "ENTIER", "DECIMAL", "DATE", "OUI/NON"
 
 # (nom colonne, type, règle / exemple)
@@ -164,11 +164,12 @@ SORTIE = {
    ("Qte historique corrigee N-1", D, "Unité de stock, sur l'horizon"), ("Qte statistique", D, "Moyenne pondérée et lissage exponentiel"),
    ("Tendance retenue", D, "% appliqué à l'historique N-1, choisi par le prévisionniste"),
    ("Qte TC", D, ""), ("Qte evenements", D, "Polco, promo, réglementaire"),
-   ("Qte correction", D, ""), ("Qte arbitree", D, "Demande, comme si l'article était disponible"), ("Qte validee", D, ""),
+   ("Qte correction", D, "Somme des corrections actives de AJUSTEMENTS_SEMAINE"), ("Qte arbitree", D, "Statistique + événements + corrections + substitutions, au minimum 0. Demande, comme si l'article était disponible"), ("Qte validee", D, ""),
    ("Qte reelle attendue", D, "Après ruptures déclarées dans RUPTURES. Vide si aucune"),
    ("Unite stock", T, ""), ("Poids article", D, "Copié du référentiel"),
    ("Statut", "LISTE", "STATISTIQUE | PREV_TC | ARBITREE | VALIDEE"), ("Version", T, "ID version courante"),
-   ("Version coefficients", E, "Cadençage appliqué"), ("Modifie par", T, ""), ("Modifie le", DT, "")]),
+   ("Version coefficients", E, "Cadençage appliqué"), ("Modifie par", T, ""), ("Modifie le", DT, ""),
+   ("Qte substitution", D, "Report net des substitutions et arrêts : négatif sur l'ancien article, positif sur le nouveau")]),
  "AJUSTEMENTS_SEMAINE": ("Exceptions à la répartition normale : une correction ou un événement sur certaines semaines. Ajouts uniquement, jamais de suppression.", [
    ("ID ajustement", T, ""), ("Code produit", T, "Vide = tout le marché"), ("Marche", T, ""), ("Entite", T, ""), ("Plateforme", T, "* = toutes"),
    ("Semaine debut", T, "AAAA-Sss"), ("Semaine fin", T, "AAAA-Sss"),

@@ -106,3 +106,23 @@ L'écran **Prévision** calcule, par article et par entité, la moyenne pondér�
 ### Aide au choix de la pondération
 
 Le bouton « Tester les pondérations sur l'historique » (écran Prévision) prédit la dernière année d'historique avec les années précédentes seulement, pour plusieurs pondérations, puis compare au réel : erreur (somme des écarts absolus par article et entité / ventes réelles) et biais (total prévu / total réel - 1). Il faut au moins deux années et un périmètre global.
+
+## Corrections, événements, arrêts de produit, substitutions (v0.1.0)
+
+L'onglet **Corrections** enregistre quatre types de saisie. Aucune ne modifie `PREVISION` avant le bouton « Appliquer les corrections (version arbitrée) » de l'écran Prévision.
+
+| Saisie | Où elle est écrite | Effet |
+|---|---|---|
+| Correction | `AJUSTEMENTS_SEMAINE` (SORTIE), type CORRECTION | Quantité ou % de la statistique, avec motif obligatoire |
+| Événement | `EVENEMENTS_COMMERCE` (SORTIE) : POLCO, PROMO, GRAND_COMPTE, APPEL_OFFRES, REGLEMENTAIRE | Quantité ou % de la statistique |
+| Arrêt de produit | `SUBSTITUTIONS` (PARAMETRES_SOP), sans nouveau code | L'article perd le taux indiqué (100 % par défaut) |
+| Substitution | `SUBSTITUTIONS` (PARAMETRES_SOP) | L'ancien perd le taux, le nouveau le reçoit (même entité) |
+
+Règles :
+- Version arbitrée : quantité retenue = statistique + événements + corrections + substitutions, au minimum 0 (avertissement si une quantité tombe sous zéro). Les colonnes `Qte evenements`, `Qte correction`, `Qte substitution`, `Qte arbitree` de `PREVISION` portent le détail. La colonne `Qte substitution` est la dernière de l'onglet (modèle v0.9).
+- Un pourcentage s'applique à la statistique de l'article. Pas de chaînage de substitutions : tout part de la statistique.
+- Un nouvel article (sans historique) reçoit une ligne `PREVISION` avec réalisé 0.
+- Une substitution ou un arrêt s'applique si l'année de prévision de la campagne tombe dans sa période (années de `Date effet` et `Date fin`), et si sa portée est PREVISION ou LES_DEUX.
+- Les semaines saisies sur corrections et événements sont conservées pour le cadençage ; au niveau du PAC seule la quantité compte.
+- Droits : correction et événement demandent la capacité de correction de la prévision, arrêt et substitution la validation de gamme ou l'arbitrage, tous avec un périmètre global. Annulation : mêmes droits. Journal et reçus d'opération comme ailleurs.
+- Recalculer la statistique crée une version STATISTIQUE sans effets : les saisies actives sont conservées, il suffit de réappliquer.

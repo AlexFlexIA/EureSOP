@@ -653,8 +653,8 @@ Version courante. Une ligne par article, entité et plateforme : le besoin sur l
 | Tendance retenue | DECIMAL | % appliqué à l'historique N-1, choisi par le prévisionniste |
 | Qte TC | DECIMAL |  |
 | Qte evenements | DECIMAL | Polco, promo, réglementaire |
-| Qte correction | DECIMAL |  |
-| Qte arbitree | DECIMAL | Demande, comme si l'article était disponible |
+| Qte correction | DECIMAL | Somme des corrections actives de AJUSTEMENTS_SEMAINE |
+| Qte arbitree | DECIMAL | Statistique + événements + corrections + substitutions, au minimum 0. Demande, comme si l'article était disponible |
 | Qte validee | DECIMAL |  |
 | Qte reelle attendue | DECIMAL | Après ruptures déclarées dans RUPTURES. Vide si aucune |
 | Unite stock | TEXTE |  |
@@ -664,6 +664,7 @@ Version courante. Une ligne par article, entité et plateforme : le besoin sur l
 | Version coefficients | ENTIER | Cadençage appliqué |
 | Modifie par | TEXTE |  |
 | Modifie le | DATE |  |
+| Qte substitution | DECIMAL | Report net des substitutions et arrêts : négatif sur l'ancien article, positif sur le nouveau |
 
 ### AJUSTEMENTS_SEMAINE
 Exceptions à la répartition normale : une correction ou un événement sur certaines semaines. Ajouts uniquement, jamais de suppression.
