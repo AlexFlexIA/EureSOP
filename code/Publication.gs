@@ -45,26 +45,43 @@ var Publication = (function () {
     if (!Object.keys(jeux).length) return { ecrit: false, raison: 'Aucun cadençage défini : rien n\'est publié. Définissez les coefficients (écran Cadençage) puis republiez.' };
     var entete = { 'ID campagne': ctx.idCampagne, 'Version contrat': SOP.CONTRAT_VERSION, 'ID version': version.idVersion, 'Scenario': 'BASE', 'Date validation': maintenant() };
     var catalogue = Catalogue.lire(acteur);
-    var hebdo = [], mensuel = [], nonCadences = 0, parMois = {};
-    lignes.forEach(function (r) {
-      var retenue = txt(r['Qte validee']) !== '' ? Number(r['Qte validee']) : (txt(r['Qte arbitree']) !== '' ? Number(r['Qte arbitree']) : Number(r['Qte statistique']) || 0);
-      var code = txt(r['Code produit']);
-      var unite = txt(r['Unite stock']) || (catalogue[code] && catalogue[code].unite) || UNITE_NON_RENSEIGNEE;
-      var jeu = Cadencage.profil(jeux, code, catalogue[code] && catalogue[code].marche);
-      if (!jeu) { nonCadences++; return; }
-      if (!(retenue > 0)) return;
-      var base = { 'Code produit': txt(r['Code produit']), 'Entite': txt(r.Entite), 'Plateforme': txt(r.Plateforme) || '*' };
-      var mensuelArticle = {};
-      Cadencage.repartir(retenue, jeu).forEach(function (x) {
-        if (x.qte === 0) return;
-        hebdo.push(Object.assign({}, entete, base, { 'Semaine': Cadencage.etiquette(annee, x.sem), 'Quantite demande': x.qte, 'Quantite reelle': x.qte, 'Unite stock': unite, 'Tonnes demande': Catalogue.tonnes(x.qte, unite), 'Tonnes reelle': Catalogue.tonnes(x.qte, unite) }));
-        var m = Cadencage.mois(annee, x.sem);
-        mensuelArticle[m] = Math.round(((mensuelArticle[m] || 0) + x.qte) * 1000) / 1000;
+    var retenues = lignes.map(function (r) {
+      var q = txt(r['Qte validee']) !== '' ? Number(r['Qte validee']) : (txt(r['Qte arbitree']) !== '' ? Number(r['Qte arbitree']) : Number(r['Qte statistique']) || 0);
+      return { entite: txt(r.Entite), code: txt(r['Code produit']), qte: q, plateforme: txt(r.Plateforme) || '*', unite: txt(r['Unite stock']) };
+    });
+    var rep = Cadencage.hebdoPourLignes(acteur, retenues, catalogue);
+    var rup = Ruptures.appliquer(acteur, rep.demande);
+    var meta = {};
+    retenues.forEach(function (l) { meta[norm(l.entite) + '|' + l.code] = l; });
+    // Une entrée de réel peut concerner un article substitut absent de la prévision : entité et code se lisent dans la clé.
+    var clesToutes = {};
+    Object.keys(rep.demande).forEach(function (k) { clesToutes[k] = true; });
+    Object.keys(rup.reel).forEach(function (k) { clesToutes[k] = true; });
+    var hebdo = [], mensuel = [];
+    Object.keys(clesToutes).sort().forEach(function (k) {
+      var m = meta[k];
+      var code = m ? m.code : k.slice(k.indexOf('|') + 1);
+      var entite = m ? m.entite : Ajustements.nomEntite(k.slice(0, k.indexOf('|'))) || k.slice(0, k.indexOf('|'));
+      var unite = (m && m.unite) || (catalogue[code] && catalogue[code].unite) || UNITE_NON_RENSEIGNEE;
+      var dem = rep.demande[k] || {}, reel = rup.reel[k] || dem;
+      var base = { 'Code produit': code, 'Entite': entite, 'Plateforme': (m && m.plateforme) || '*' };
+      var semaines = {};
+      Object.keys(dem).forEach(function (s) { semaines[s] = true; });
+      Object.keys(reel).forEach(function (s) { semaines[s] = true; });
+      var parMois = {};
+      Object.keys(semaines).sort().forEach(function (s) {
+        var qd = dem[s] || 0, qr = reel[s] || 0;
+        if (qd === 0 && qr === 0) return;
+        hebdo.push(Object.assign({}, entete, base, { 'Semaine': s, 'Quantite demande': qd, 'Quantite reelle': qr, 'Unite stock': unite, 'Tonnes demande': Catalogue.tonnes(qd, unite), 'Tonnes reelle': Catalogue.tonnes(qr, unite) }));
+        var mo = Cadencage.mois(Number(s.slice(0, 4)), Number(s.slice(6)));
+        var x = parMois[mo] = parMois[mo] || { d: 0, r: 0 };
+        x.d = Math.round((x.d + qd) * 1000) / 1000; x.r = Math.round((x.r + qr) * 1000) / 1000;
       });
-      Object.keys(mensuelArticle).sort().forEach(function (m) {
-        mensuel.push(Object.assign({}, entete, base, { 'Mois': m, 'Quantite demande': mensuelArticle[m], 'Quantite reelle': mensuelArticle[m], 'Unite stock': unite, 'Tonnes demande': Catalogue.tonnes(mensuelArticle[m], unite), 'Tonnes reelle': Catalogue.tonnes(mensuelArticle[m], unite) }));
+      Object.keys(parMois).sort().forEach(function (mo) {
+        mensuel.push(Object.assign({}, entete, base, { 'Mois': mo, 'Quantite demande': parMois[mo].d, 'Quantite reelle': parMois[mo].r, 'Unite stock': unite, 'Tonnes demande': Catalogue.tonnes(parMois[mo].d, unite), 'Tonnes reelle': Catalogue.tonnes(parMois[mo].r, unite) }));
       });
     });
+    var nonCadences = rep.nonCadences;
     Store.viderDonnees(ctx.idSortie, 'PUBLICATION_HEBDO');
     Store.viderDonnees(ctx.idSortie, 'PUBLICATION_MENSUELLE');
     Store.append(ctx.idSortie, 'PUBLICATION_HEBDO', hebdo);
@@ -72,7 +89,7 @@ var Publication = (function () {
     var appro = publierAppro(acteur, ctx, version, entete);
     var nbContrat = ecrireContrat(ctx);
     Journal.log(ctx.idSortie, acteur, 'PUBLICATION_ECRITE', version.idVersion, '', 'contrat ' + SOP.CONTRAT_VERSION + ' · ' + mensuel.length + ' ligne(s) mensuelles, ' + hebdo.length + ' hebdomadaires', nonCadences ? nonCadences + ' article(s) sans cadençage' : '', idOperation);
-    return { ecrit: true, mensuelle: mensuel.length, hebdo: hebdo.length, nonCadences: nonCadences, contrat: nbContrat, appro: appro };
+    return { ecrit: true, mensuelle: mensuel.length, hebdo: hebdo.length, nonCadences: nonCadences, contrat: nbContrat, appro: appro, ruptures: Object.keys(rup.touche).length };
   }
 
   // Republie la version validée courante (après un changement de cadençage par exemple).

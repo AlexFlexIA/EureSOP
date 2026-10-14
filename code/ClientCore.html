@@ -28,7 +28,7 @@
   // Totaux de l'entité filtrée (ou de toutes), dans l'unité choisie.
   App.totaux = function (liste) {
     var ent = App.etat.entite, cle = App.UNITES[App.etat.unite].cle;
-    var t = { articles: 0, n1: 0, statistique: 0, tc: 0, evenements: 0, correction: 0, substitution: 0, retenue: 0 };
+    var t = { articles: 0, n1: 0, statistique: 0, tc: 0, evenements: 0, correction: 0, substitution: 0, retenue: 0, reel: 0 };
     (liste || []).forEach(function (x) {
       if (ent && x.entite !== ent) return;
       t.articles += x.articles;

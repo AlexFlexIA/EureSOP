@@ -1851,6 +1851,173 @@ test('publication : unité de stock du catalogue, tonnes pour les articles en KG
   assert.strictEqual(m[0]['Tonnes reelle'], 1.93);
 });
 
+// ---------- Ruptures : demande et réel ----------
+const declarer = (env, o, op) => appel(env, 'declarerRupture', [Object.assign({ entite: 'Coop EUREDEN', code: DAP, debut: '2027-S06', fin: '2027-S07', traitement: 'PERDUES', cause: 'APPRO_FOURNISSEUR' }, o), op || ('r' + Math.random())]);
+const SEM = 4086.297; // 16345,188 réparti sur quatre semaines de 25 % (arrondi à 3 décimales par l'application)
+function envRup(coefs) {
+  const env = envCad(); env.moi('admin@eureden.com');
+  sauverCoef(env, { coefficients: coefs || { 5: 25, 6: 25, 7: 25, 8: 25 } }, 'k1');
+  return env;
+}
+
+test('ruptures : déclaration, liste, annulation', () => {
+  const env = envRup();
+  const r = declarer(env, { commentaire: 'Retard fournisseur' }, 'r1');
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(r.data.resultat.id, 'RUP0001');
+  const l = env.lignes('SORTIE1', 'RUPTURES')[0];
+  assert.strictEqual(l['Code produit'], DAP);
+  assert.strictEqual(l.Entite, 'Coop EUREDEN');
+  assert.strictEqual(l.Statut, 'ACTIVE');
+  assert.strictEqual(l['Traitement ventes'], 'PERDUES');
+  assert.strictEqual(l.Origine, 'CONSTATEE');
+  assert.strictEqual(appel(env, 'ruptures').data.length, 1);
+  assert.strictEqual(appel(env, 'annulerRupture', ['RUP0001', 'a1']).ok, true);
+  assert.strictEqual(appel(env, 'ruptures').data.length, 0);
+  assert.strictEqual(appel(env, 'annulerRupture', ['RUP0001', 'a2']).code, 'DEJA_ANNULE');
+  assert.strictEqual(appel(env, 'annulerRupture', ['RUP9999', 'a3']).code, 'AJUSTEMENT_INCONNU');
+  assert.strictEqual(declarer(env, {}, 'r1').data.rejoue, true);
+});
+test('ruptures : contrôles des semaines, du traitement, du taux, du retour et du substitut', () => {
+  const env = envRup();
+  const code = (o) => declarer(env, o).code;
+  assert.strictEqual(code({ code: '' }), 'CODE_OBLIGATOIRE');
+  assert.strictEqual(code({ entite: 'Inconnue' }), 'ENTITE_INCONNUE');
+  assert.strictEqual(code({ debut: '2027-6' }), 'SEMAINE_INVALIDE');
+  assert.strictEqual(code({ fin: '2027-S05' }), 'SEMAINE_INVALIDE');
+  assert.strictEqual(code({ traitement: 'AUTRE' }), 'TYPE_INVALIDE');
+  assert.strictEqual(code({ cause: 'ENVIE' }), 'TYPE_INVALIDE');
+  assert.strictEqual(code({ origine: 'RUMEUR' }), 'TYPE_INVALIDE');
+  assert.strictEqual(code({ traitement: 'REPORTEES', taux: 0, retour: '2027-S09' }), 'TAUX_INVALIDE');
+  assert.strictEqual(code({ traitement: 'REPORTEES', taux: 50, retour: '' }), 'SEMAINE_INVALIDE');
+  assert.strictEqual(code({ traitement: 'REPORTEES', taux: 50, retour: '2027-S07' }), 'SEMAINE_INVALIDE');
+  assert.strictEqual(code({ traitement: 'SUBSTITUEES', taux: 50, substitut: '' }), 'CODE_OBLIGATOIRE');
+  assert.strictEqual(code({ traitement: 'SUBSTITUEES', taux: 50, substitut: DAP }), 'SUBSTITUTION_INVALIDE');
+  assert.strictEqual(env.lignes('SORTIE1', 'RUPTURES').length, 0);
+});
+test('ruptures : droits et campagne gelée', () => {
+  const env = envRup(); env.moi('rm.engrais@eureden.com');
+  assert.strictEqual(declarer(env, {}, 'r1').code, 'CAPACITE_REFUSEE');
+  const env2 = envCad(); env2.moi('admin@eureden.com'); env2.feuille('PARAM_FICHIER_TEST_00001', 'CAMPAGNES')._data[1][10] = 'GELEE';
+  assert.strictEqual(declarer(env2, {}, 'r1').code, 'CAMPAGNE_FERMEE');
+});
+test('ruptures : ventes perdues, le réel s\'annule pendant la rupture', () => {
+  const env = envRup();
+  declarer(env, {}, 'r1');
+  const r = env.run("Ruptures.appliquer(Auth.resolve(), { 'COOP EUREDEN|1109939': { '2027-S05': 100, '2027-S06': 100, '2027-S07': 100, '2027-S08': 100 } })");
+  assert.deepStrictEqual(r.reel['COOP EUREDEN|1109939'], { '2027-S05': 100, '2027-S06': 0, '2027-S07': 0, '2027-S08': 100 });
+  assert.strictEqual(r.perdu['COOP EUREDEN|1109939'], 200);
+});
+test('ruptures : ventes reportées, une part revient la semaine de retour', () => {
+  const env = envRup();
+  declarer(env, { traitement: 'REPORTEES', taux: 50, retour: '2027-S09' }, 'r1');
+  const r = env.run("Ruptures.appliquer(Auth.resolve(), { 'COOP EUREDEN|1109939': { '2027-S05': 100, '2027-S06': 100, '2027-S07': 100, '2027-S08': 100 } })");
+  assert.deepStrictEqual(r.reel['COOP EUREDEN|1109939'], { '2027-S05': 100, '2027-S06': 0, '2027-S07': 0, '2027-S08': 100, '2027-S09': 100 });
+  assert.strictEqual(r.perdu['COOP EUREDEN|1109939'], 100);
+});
+test('ruptures : ventes substituées, le substitut reçoit les mêmes semaines', () => {
+  const env = envRup();
+  declarer(env, { traitement: 'SUBSTITUEES', taux: 80, substitut: 'X999' }, 'r1');
+  const r = env.run("Ruptures.appliquer(Auth.resolve(), { 'COOP EUREDEN|1109939': { '2027-S05': 100, '2027-S06': 100, '2027-S07': 100, '2027-S08': 100 } })");
+  assert.deepStrictEqual(r.reel['COOP EUREDEN|X999'], { '2027-S06': 80, '2027-S07': 80 });
+  assert.strictEqual(r.perdu['COOP EUREDEN|1109939'], 40);
+  assert.strictEqual(r.reel['COOP EUREDEN|1109939']['2027-S06'], 0);
+});
+test('ruptures : une rupture hors des semaines de demande ne change rien', () => {
+  const env = envRup();
+  declarer(env, { debut: '2027-S20', fin: '2027-S21' }, 'r1');
+  const r = env.run("Ruptures.appliquer(Auth.resolve(), { 'COOP EUREDEN|1109939': { '2027-S05': 100 } })");
+  assert.deepStrictEqual(r.reel['COOP EUREDEN|1109939'], { '2027-S05': 100 });
+  assert.deepStrictEqual(r.touche, {});
+});
+test('ruptures : une rupture sans fin dure jusqu\'à la dernière semaine', () => {
+  const env = envRup();
+  declarer(env, { fin: '' }, 'r1');
+  const r = env.run("Ruptures.appliquer(Auth.resolve(), { 'COOP EUREDEN|1109939': { '2027-S05': 100, '2027-S06': 100, '2027-S08': 100 } })");
+  assert.deepStrictEqual(r.reel['COOP EUREDEN|1109939'], { '2027-S05': 100, '2027-S06': 0, '2027-S08': 0 });
+});
+test('ruptures : quantité réelle attendue dans PREVISION et dans la prévision courante', () => {
+  const env = envRup();
+  declarer(env, {}, 'r1');
+  reprev(env, [], 'rp1');
+  const d = prevLigne(env, DAP);
+  assert.ok(Math.abs(d['Qte reelle attendue'] - 2 * SEM) < 0.01);
+  assert.strictEqual(prevLigne(env, ONA_ART)['Qte reelle attendue'], '');
+  const c = env.run('apiPrevision()').data;
+  const a = c.articles.filter((x) => x.code === DAP)[0];
+  assert.ok(Math.abs(a.reel - 2 * SEM) < 0.01);
+  assert.strictEqual(c.articles.filter((x) => x.code === ONA_ART)[0].reel, null);
+  const tot = c.totaux.filter((t) => t.entite === 'Coop EUREDEN')[0];
+  assert.ok(Math.abs(tot.q.reel - 2 * SEM) < 0.01);
+  const ona = c.totaux.filter((t) => t.entite === 'NEGOCE ONA')[0];
+  assert.strictEqual(ona.q.reel, ona.q.retenue);
+});
+test('ruptures : sans cadençage, avertissement et pas de réel', () => {
+  const env = envCad(); env.moi('admin@eureden.com');
+  declarer(env, {}, 'r1');
+  const r = reprev(env, [], 'rp1');
+  assert.ok(r.data.resultat.avertissements.some((a) => /cadençage n'est pas défini/.test(a)));
+  assert.strictEqual(prevLigne(env, DAP)['Qte reelle attendue'], '');
+});
+test('ruptures : un substitut absent de la prévision reçoit une ligne', () => {
+  const env = envRup();
+  declarer(env, { traitement: 'SUBSTITUEES', taux: 100, substitut: 'X999' }, 'r1');
+  reprev(env, [], 'rp1');
+  const x = prevLigne(env, 'X999');
+  assert.ok(x);
+  assert.strictEqual(x['Qte arbitree'], 0);
+  assert.ok(Math.abs(x['Qte reelle attendue'] - 2 * SEM) < 0.01);
+  assert.ok(Math.abs(prevLigne(env, DAP)['Qte reelle attendue'] - 2 * SEM) < 0.01);
+});
+test('ruptures : la publication distingue demande et réel, le substitut apparaît avec une demande nulle', () => {
+  const env = envRup();
+  declarer(env, { traitement: 'SUBSTITUEES', taux: 100, substitut: 'X999' }, 'r1');
+  reprev(env, [], 'rp1');
+  const r = appel(env, 'validerVersion', [{}, 'v1']);
+  assert.strictEqual(r.data.resultat.publication.ecrit, true);
+  const h = env.lignes('SORTIE1', 'PUBLICATION_HEBDO');
+  const dap = h.filter((x) => x['Code produit'] === DAP).sort((a, b) => (a.Semaine < b.Semaine ? -1 : 1));
+  assert.deepStrictEqual(dap.map((x) => x.Semaine), ['2027-S05', '2027-S06', '2027-S07', '2027-S08']);
+  assert.deepStrictEqual(dap.map((x) => x['Quantite demande']), [SEM, SEM, SEM, SEM]);
+  assert.deepStrictEqual(dap.map((x) => x['Quantite reelle']), [SEM, 0, 0, SEM]);
+  const x9 = h.filter((x) => x['Code produit'] === 'X999');
+  assert.deepStrictEqual(x9.map((x) => x['Quantite demande']), [0, 0]);
+  assert.deepStrictEqual(x9.map((x) => x['Quantite reelle']), [SEM, SEM]);
+  const m = env.lignes('SORTIE1', 'PUBLICATION_MENSUELLE');
+  const mdap = m.filter((x) => x['Code produit'] === DAP)[0];
+  assert.ok(Math.abs(mdap['Quantite demande'] - 4 * SEM) < 0.01);
+  assert.ok(Math.abs(mdap['Quantite reelle'] - 2 * SEM) < 0.01);
+  assert.strictEqual(r.data.resultat.publication.ruptures, 2);
+});
+test('ruptures : sans rupture la quantité réelle égale la demande dans la publication', () => {
+  const env = envRup();
+  reprev(env, [], 'rp1');
+  appel(env, 'validerVersion', [{}, 'v1']);
+  assert.ok(env.lignes('SORTIE1', 'PUBLICATION_HEBDO').every((x) => x['Quantite reelle'] === x['Quantite demande']));
+});
+test('ruptures : le stock réel plafonne les ventes et compte les ventes perdues', () => {
+  const env = envStock();
+  const d = proj(env).data;
+  const a = art(d, DAP);
+  assert.ok(Math.abs(a.perdu - 4345.188) < 0.01);
+  assert.ok(a.serieReel.every((v) => v >= 0));
+  assert.ok(a.serie.some((v) => v < 0));
+  assert.strictEqual(a.serieReel[d.semaines.indexOf('2027-S08')], 0);
+  assert.strictEqual(art(d, ONA_ART).perdu, 0);
+  assert.strictEqual(d.kpis.declarees, 0);
+  assert.strictEqual(a.declaree, false);
+});
+test('ruptures : une rupture déclarée couvrant la semaine de rupture prévue marque l\'article comme déclaré', () => {
+  const env = envStock();
+  declarer(env, { debut: '2027-S07', fin: '2027-S08' }, 'r1');
+  const d = proj(env).data;
+  assert.strictEqual(art(d, DAP).declaree, true);
+  assert.strictEqual(d.kpis.declarees, 1);
+  const env2 = envStock();
+  declarer(env2, { debut: '2027-S09', fin: '' }, 'r1');
+  assert.strictEqual(art(proj(env2).data, DAP).declaree, false);
+});
+
 let echecs = 0;
 tests.forEach(({ nom, fn }) => {
   try { fn(); console.log('  ok   ' + nom); } catch (e) { echecs++; console.log('  ECHEC ' + nom + '\n        ' + (e.message || e).split('\n')[0]); }

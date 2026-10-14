@@ -242,6 +242,24 @@ function page() {
       await p.click('#s-risque');
       assert.ok(/1 article\(s\)/.test(await texte('main')));
     });
+    await etape('ruptures : déclaration depuis les stocks, listée puis annulée', async () => {
+      await p.click('#menu [data-v=stocks]');
+      await p.waitForSelector('#s-declarer');
+      await p.click('#s-declarer');
+      await p.waitForSelector('#dlg[open]');
+      await p.fill('#dlg #u-code', '1000001');
+      await p.fill('#dlg #u-debut', '2027-S08');
+      await p.selectOption('#dlg #u-trait', 'REPORTEES');
+      await p.fill('#dlg #u-taux', '50');
+      await p.fill('#dlg #u-retour', '2027-S12');
+      await p.click('#dlg-ok');
+      await p.waitForSelector('#dlg:not([open])', { state: 'attached' });
+      await p.waitForSelector('main :text("50 % reportées en 2027-S12")');
+      await p.click('main [data-annuler-rup]');
+      await p.waitForSelector('#dlg[open]');
+      await p.click('#dlg-ok');
+      await p.waitForSelector('main :text("Aucune rupture déclarée")');
+    });
     await etape('tableau de bord : alerte de rupture issue des stocks', async () => {
       await p.click('#menu [data-v=dashboard]');
       await p.waitForSelector('.alert');
@@ -336,7 +354,7 @@ function page() {
     assert.deepStrictEqual(erreurs, [], 'erreurs JavaScript dans la page : ' + erreurs.join(' | '));
   } catch (e) {
     console.log(etapes.join('\n'));
-    console.log('\nÉCHEC : ' + e.message);
+    console.log('\nÉCHEC : ' + e.message + ' / erreurs page : ' + erreurs.join(' | '));
     try { await p.screenshot({ path: path.join(RACINE, 'tests', 'echec-e2e.png'), fullPage: true }); } catch (x) { /* ignoré */ }
     await nav.close();
     process.exit(1);

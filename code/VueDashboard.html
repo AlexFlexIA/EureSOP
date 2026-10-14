@@ -62,7 +62,7 @@
         App.pill('info', 'Biais ' + (b > 0 ? '+' : '') + b + ' % (' + (b > 0 ? 'sur' : 'sous') + '-prévision)', 'ℹ')];
     }
     var kpis = [
-      ['Prévision retenue' + (prevue ? ' ' + prevue : ''), App.fmt(t.retenue), d.version ? App.pill(t.retenue >= t.n1 ? 'ok' : 'warn', 'vs ' + ref + ' ' + (t.n1 ? App.pct((t.retenue / t.n1 - 1) * 100) : '—'), t.retenue >= t.n1 ? '▲' : '▼') : App.pill('info', 'Pas encore calculée', 'ℹ')],
+      ['Prévision retenue' + (prevue ? ' ' + prevue : ''), App.fmt(t.retenue), d.version ? App.pill(t.retenue >= t.n1 ? 'ok' : 'warn', 'vs ' + ref + ' ' + (t.n1 ? App.pct((t.retenue / t.n1 - 1) * 100) : '—'), t.retenue >= t.n1 ? '▲' : '▼') + (t.reel < t.retenue - 0.5 ? ' ' + App.pill('warn', 'Réel attendu ' + App.fmt(t.reel), '⚠') : '') : App.pill('info', 'Pas encore calculée', 'ℹ')],
       ['Prévision des TC', d.tc && d.tc.couverture ? App.fmt(t.tc) : 'Non connectée', d.tc && d.tc.couverture ? App.pill(d.tc.couverture.tcAyantSaisi < d.tc.couverture.tc ? 'warn' : 'ok', d.tc.couverture.tcAyantSaisi + ' TC sur ' + d.tc.couverture.tc + ' ont saisi', d.tc.couverture.tcAyantSaisi < d.tc.couverture.tc ? '⚠' : '✓') : (d.tc && d.tc.erreur ? App.pill('bad', 'Fichier illisible', '✖') : App.pill('info', 'Source PREV_TC à déclarer', 'ℹ'))],
       kpiBudget(bud, cad, t),
       kpiFiab,

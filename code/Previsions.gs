@@ -223,6 +223,32 @@ var Previsions = (function () {
       t.n1 += n1; t.statistique += stat; t.tc += tc || 0; t.retenue += retenue; t.articles++;
     });
     var avertissements = eff.avertissements.concat(avertissementsTc);
+    // Ruptures déclarées : quantité réelle attendue (la demande moins les ventes qui ne peuvent pas se faire). Demande le cadençage.
+    var nbRuptures = 0;
+    if (type === 'ARBITREE' && Ruptures.actives(ctx).length) {
+      var rep = Cadencage.hebdoPourLignes(acteur, lignes.map(function (l) { return { entite: l.Entite, code: l['Code produit'], qte: Number(l['Qte arbitree']) || 0 }; }), catalogue);
+      if (!rep.cadence) {
+        avertissements.push('Des ruptures sont déclarées mais le cadençage n\'est pas défini : la quantité réelle attendue n\'est pas calculée.');
+      } else {
+        var rup = Ruptures.appliquer(acteur, rep.demande);
+        var parCle = {};
+        lignes.forEach(function (l) { parCle[norm(l.Entite) + '|' + l['Code produit']] = l; });
+        Object.keys(rup.touche).forEach(function (k) {
+          var total = Object.keys(rup.reel[k] || {}).reduce(function (a, sem) { return a + rup.reel[k][sem]; }, 0);
+          var l = parCle[k];
+          if (!l) {
+            var entite = Ajustements.nomEntite(k.slice(0, k.indexOf('|'))) || k.slice(0, k.indexOf('|')), code = k.slice(k.indexOf('|') + 1);
+            l = { 'ID ligne': idLigne(ctx.idCampagne, entite, code), 'Code produit': code, 'Entite': entite, 'Plateforme': PLATEFORME_NON_AFFECTEE, 'Qte historique corrigee N-1': 0, 'Qte statistique': 0, 'Qte arbitree': 0,
+              'Statut': type, 'Version': version.idVersion, 'Modifie par': acteur.email, 'Modifie le': maintenantTxt };
+            if (catalogue[code] && catalogue[code].unite) l['Unite stock'] = catalogue[code].unite;
+            lignes.push(l); photos.push({ 'ID version': version.idVersion, 'ID ligne': l['ID ligne'], 'Qte retenue': 0 });
+            parCle[k] = l;
+          }
+          l['Qte reelle attendue'] = arrondi(total, dec);
+          nbRuptures++;
+        });
+      }
+    }
     if (negatifs) avertissements.push(negatifs + ' article(s) tombent sous zéro après les corrections : la quantité arbitrée est ramenée à 0.');
 
     Store.viderDonnees(ctx.idSortie, 'PREVISION');
@@ -231,7 +257,7 @@ var Previsions = (function () {
     Journal.log(ctx.idSortie, acteur, type === 'ARBITREE' ? 'PREVISION_ARBITREE' : 'PREVISION_STATISTIQUE', version.idVersion, '', lignes.length + ' ligne(s)', libelle, idOperation);
     return {
       idVersion: version.idVersion, type: type, lignes: lignes.length, ponderation: poids, annees: annees,
-      evenements: eff.nbEvenements, corrections: eff.nbCorrections, substitutions: eff.nbSubstitutions, baseTc: baseTc && !!tcLu,
+      evenements: eff.nbEvenements, corrections: eff.nbCorrections, substitutions: eff.nbSubstitutions, ruptures: nbRuptures, baseTc: baseTc && !!tcLu,
       avertissements: avertissements,
       totaux: Object.keys(totaux).map(function (k) { return totaux[k]; })
     };
@@ -312,7 +338,7 @@ var Previsions = (function () {
     }
     var catalogue = Catalogue.lire(acteur);
     var num = function (v) { var n = Number(v); return isFinite(n) && txt(v) !== '' ? n : 0; };
-    var zero = function () { return { n1: 0, statistique: 0, tc: 0, evenements: 0, correction: 0, substitution: 0, retenue: 0 }; };
+    var zero = function () { return { n1: 0, statistique: 0, tc: 0, evenements: 0, correction: 0, substitution: 0, retenue: 0, reel: 0 }; };
     var baseTc = norm(Params.reglages().BASE_ARBITRAGE) === 'TC';
     var totaux = {}, totauxMarche = {};
     var articles = visibles.map(function (r) {
@@ -322,6 +348,7 @@ var Previsions = (function () {
       var n1 = num(r['Qte historique corrigee N-1']), stat = num(r['Qte statistique']);
       var ev = num(r['Qte evenements']), co = num(r['Qte correction']), su = num(r['Qte substitution']);
       var tc = txt(r['Qte TC']) !== '' ? num(r['Qte TC']) : null;
+      var reel = txt(r['Qte reelle attendue']) !== '' ? num(r['Qte reelle attendue']) : null;
       var arbitree = txt(r['Qte arbitree']) !== '';
       var retenue = arbitree ? num(r['Qte arbitree']) : stat;
       var depart = arbitree && baseTc && tc !== null ? tc : stat;
@@ -333,10 +360,10 @@ var Previsions = (function () {
         [t, tm].forEach(function (cible) {
           var m = cible[u[0]];
           m.n1 += u[0] === 'q' ? n1 : u[2];
-          m.statistique += stat * u[1]; m.tc += (tc || 0) * u[1]; m.evenements += ev * u[1]; m.correction += co * u[1]; m.substitution += su * u[1]; m.retenue += retenue * u[1];
+          m.statistique += stat * u[1]; m.tc += (tc || 0) * u[1]; m.evenements += ev * u[1]; m.correction += co * u[1]; m.substitution += su * u[1]; m.retenue += retenue * u[1]; m.reel += (reel !== null ? reel : retenue) * u[1];
         });
       });
-      return { code: code, libelle: hs.libelle || cat.libelle || '', marche: marche, famille: cat.famille || '', unite: cat.unite || '', entite: entite, n1: n1, statistique: stat, tc: tc, depart: depart, evenements: ev, correction: co, substitution: su, retenue: retenue, rh: hs.rh, re: hs.re, n1ha: hs.n1ha, n1eur: hs.n1eur };
+      return { code: code, libelle: hs.libelle || cat.libelle || '', marche: marche, famille: cat.famille || '', unite: cat.unite || '', entite: entite, n1: n1, statistique: stat, tc: tc, reel: reel, depart: depart, evenements: ev, correction: co, substitution: su, retenue: retenue, rh: hs.rh, re: hs.re, n1ha: hs.n1ha, n1eur: hs.n1eur };
     }).sort(function (a, b) { return b.retenue - a.retenue || (a.code < b.code ? -1 : 1); });
     return {
       version: { id: txt(version['ID version']), libelle: txt(version.Libelle), creePar: txt(version['Cree par']), creeLe: txt(version['Cree le']), verrouillee: yes(version.Verrouillee), type: norm(version.Type) },

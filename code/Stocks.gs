@@ -137,6 +137,7 @@ var Stocks = (function () {
     };
 
     var cMax = reglageNombre('COUVERTURE_MAX_MOIS', 3);
+    var declarees = Ruptures.actives(Versions.contexte(acteur));
     var libelles = {};
     var unites = {};
     try { Previsions.chargerCourante(acteur).articles.forEach(function (a) { if (a.libelle) libelles[a.code] = a.libelle; if (a.unite) unites[a.code] = a.unite; }); } catch (e) { /* codes seuls */ }
@@ -151,12 +152,15 @@ var Stocks = (function () {
       Object.keys(parPlat).forEach(function (p) { var x = plateformes[p] = plateformes[p] || { plateforme: p, stock: 0, articles: 0 }; x.stock += parPlat[p]; x.articles++; });
       var d = dem.parArticle[code] || {};
       var rec = receptions[code] || semaines.map(function () { return 0; });
-      var serie = [], stock = stock0, mini = minis[code] || 0, demandeTotale = 0, recTotale = 0;
+      var serie = [], serieReel = [], stock = stock0, stockReel = stock0, perduTotal = 0, mini = minis[code] || 0, demandeTotale = 0, recTotale = 0;
       var premiereRupture = -1, pire = Infinity;
       semaines.forEach(function (e, i) {
         var q = d[e] || 0;
         stock = stock + rec[i] - q; demandeTotale += q; recTotale += rec[i];
         serie.push(arr(stock));
+        // Vue réelle : on ne vend que ce qui est en stock, le reste est perdu (plancher à zéro).
+        var dispo = stockReel + rec[i], vendu = Math.min(q, Math.max(0, dispo));
+        perduTotal += q - vendu; stockReel = dispo - vendu; serieReel.push(arr(stockReel));
         if (stock < mini && premiereRupture < 0) premiereRupture = i;
         if (stock < pire) pire = stock;
       });
@@ -171,7 +175,8 @@ var Stocks = (function () {
       return {
         code: code, libelle: libelles[code] || '', stock0: arr(stock0), mini: mini, demande: arr(demandeTotale), receptions: arr(recTotale), fin: fin0,
         couverture: hebdoMoyenne > 0 ? arr(stock0 / hebdoMoyenne) : null, alerte: alerte,
-        semaineRupture: premiereRupture >= 0 ? semaines[premiereRupture] : '', manque: manque, serie: serie
+        semaineRupture: premiereRupture >= 0 ? semaines[premiereRupture] : '', manque: manque, serie: serie, serieReel: serieReel, perdu: arr(perduTotal),
+        declaree: premiereRupture >= 0 && declarees.filter(function (r) { return r.code === code && r.debut <= semaines[premiereRupture] && (!r.fin || r.fin >= semaines[premiereRupture]); }).length > 0
       };
     });
 
@@ -187,7 +192,7 @@ var Stocks = (function () {
     return {
       dateStock: st.date.toISOString().slice(0, 10), debut: debut, semaines: semaines,
       commandesConnectees: !!co, demandeConnectee: Object.keys(dem.parArticle).length > 0, anneePrevue: dem.annee,
-      kpis: { articles: articles.length, ruptures: articles.filter(function (a) { return a.alerte === 'RUPTURE'; }).length, surstocks: articles.filter(function (a) { return a.alerte === 'SURSTOCK'; }).length, besoins: besoins.length },
+      kpis: { articles: articles.length, perdu: arr(articles.reduce(function (s2, a) { return s2 + a.perdu; }, 0)), declarees: articles.filter(function (a) { return a.declaree; }).length, ruptures: articles.filter(function (a) { return a.alerte === 'RUPTURE'; }).length, surstocks: articles.filter(function (a) { return a.alerte === 'SURSTOCK'; }).length, besoins: besoins.length },
       ruptureParSemaine: ruptureParSemaine,
       plateformes: Object.keys(plateformes).sort().map(function (k) { plateformes[k].stock = arr(plateformes[k].stock); return plateformes[k]; }),
       articles: articles, besoins: besoins

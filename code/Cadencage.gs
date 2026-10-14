@@ -186,6 +186,26 @@ var Cadencage = (function () {
     return { annee: annee, sem: sem, etiquette: etiquette(annee, sem) };
   }
 
+  // Répartit des quantités de PREVISION sur les semaines de l'année prévue.
+  // lignes : [{ entite, code, qte }] ; renvoie { demande: { 'ENTITE|code': { 'AAAA-Sss': quantité } }, nonCadences, annee }.
+  function hebdoPourLignes(acteur, lignes, catalogue) {
+    var annee = Number(acteur.campagne['Annee prevision']) || 0;
+    var jeux = lire(acteur);
+    var res = { demande: {}, nonCadences: 0, annee: annee, cadence: !!annee && Object.keys(jeux).length > 0 };
+    if (!res.cadence) return res;
+    lignes.forEach(function (l) {
+      var j = profil(jeux, l.code, catalogue && catalogue[l.code] && catalogue[l.code].marche);
+      if (!j) { res.nonCadences++; return; }
+      if (!(l.qte > 0)) return;
+      var cible = res.demande[norm(l.entite) + '|' + txt(l.code)] = res.demande[norm(l.entite) + '|' + txt(l.code)] || {};
+      repartir(l.qte, j).forEach(function (x) {
+        var e = etiquette(annee, x.sem);
+        cible[e] = Math.round(((cible[e] || 0) + x.qte) * 1000) / 1000;
+      });
+    });
+    return res;
+  }
+
   // Quantité retenue par semaine de livraison : { code: { 'AAAA-Sss': quantité } }, toutes entités confondues.
   function demandeHebdo(acteur) {
     var annee = Number(acteur.campagne['Annee prevision']) || 0;
@@ -246,6 +266,6 @@ var Cadencage = (function () {
     return res;
   }
 
-  return { dateDe: dateDe, semaineDe: semaineDe, demandeHebdo: demandeHebdo, lire: lire, profil: profil, repartir: repartir, sauvegarder: sauvegarder, supprimer: supprimer, valider: validerJeu, synthese: synthese,
+  return { hebdoPourLignes: hebdoPourLignes, dateDe: dateDe, semaineDe: semaineDe, demandeHebdo: demandeHebdo, lire: lire, profil: profil, repartir: repartir, sauvegarder: sauvegarder, supprimer: supprimer, valider: validerJeu, synthese: synthese,
     jeudi: jeudi, nbSemaines: nbSemaines, mois: mois, etiquette: etiquette, anneePrevue: anneePrevue };
 })();

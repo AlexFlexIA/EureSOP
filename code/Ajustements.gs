@@ -351,5 +351,5 @@ var Ajustements = (function () {
     return res;
   }
 
-  return { creer: creer, annuler: annuler, lister: lister, effets: effets, preparerCorrections: preparerCorrections, remplacerCorrections: remplacerCorrections, TYPES_EVENEMENT: TYPES_EVENEMENT, TYPES_HISTORIQUE: TYPES_HISTORIQUE };
+  return { nomEntite: nomEntite, creer: creer, annuler: annuler, lister: lister, effets: effets, preparerCorrections: preparerCorrections, remplacerCorrections: remplacerCorrections, TYPES_EVENEMENT: TYPES_EVENEMENT, TYPES_HISTORIQUE: TYPES_HISTORIQUE };
 })();
