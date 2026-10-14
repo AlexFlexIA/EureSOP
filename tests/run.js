@@ -331,10 +331,12 @@ test('apiDemarrage : réponse structurée', () => {
   assert.strictEqual(r.data.droits.arbitrage, true);
 });
 test('apiDemarrage : année de prévision de la campagne', () => {
-  const env = creerEnvStandard(); env.moi('guillaume@eureden.com');
-  assert.strictEqual(env.run('apiDemarrage()').data.campagne.anneePrevision, 0);
-  env.feuille('PARAM_FICHIER_TEST_00001', 'CAMPAGNES')._data[1][3] = 2027;
-  assert.strictEqual(env.run('apiDemarrage()').data.campagne.anneePrevision, 2027);
+  const sans = creerEnvStandard(); sans.moi('guillaume@eureden.com');
+  assert.strictEqual(sans.run('apiDemarrage()').data.campagne.anneePrevision, 0);
+  // Les lectures sont mémorisées pendant une exécution : un autre environnement simule une nouvelle exécution.
+  const avec = creerEnvStandard(); avec.moi('guillaume@eureden.com');
+  avec.feuille('PARAM_FICHIER_TEST_00001', 'CAMPAGNES')._data[1][3] = 2027;
+  assert.strictEqual(avec.run('apiDemarrage()').data.campagne.anneePrevision, 2027);
 });
 test('apiDemarrage : erreur métier renvoyée sans trace', () => {
   const env = creerEnvStandard(); env.moi('inconnu@eureden.com');
