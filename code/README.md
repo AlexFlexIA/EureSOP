@@ -39,9 +39,12 @@ Les écritures sont permises quand la campagne est OUVERTE, et en PREPARATION po
 1. Créer les classeurs à partir de `modeles/xlsx/` et les convertir en Google Sheets (PARAMETRES_SOP, SORTIE_SOP). Compléter CAMPAGNES (une seule ligne `Selectionnee = OUI`, `ID sortie` = ID du fichier SORTIE_SOP), REGLAGES (`DOMAINES`) et ACCES.
 2. Restreindre le partage des classeurs. Les utilisateurs n'ont pas besoin d'y accéder : la web app s'exécute au nom du déployeur.
 3. Créer un projet Apps Script avec un compte `@eureden.com` habilité. Copier tous les `.gs` et `.html` de `code/` et le manifeste `appsscript.json` (afficher le manifeste dans les paramètres du projet).
-4. Dans `Setup.gs`, renseigner l'ID du fichier PARAMETRES_SOP dans `configurerParametres_`, puis lancer la fonction depuis l'éditeur. Lancer ensuite `installerDepuisEditeur_` : le compte courant devient administrateur initial. Aucune autre adresse n'est créée.
-5. Déployer en **Application web** : exécuter en tant que **moi (le déployeur)**, accès **limité à l'organisation**. Ne jamais déployer en accès anonyme.
-6. Ouvrir l'URL `/exec`, onglet **Contrôles**, lancer les contrôles et corriger ce qui est signalé.
+4. Vérifier que le projet contient **tous** les fichiers : `Code.gs` (point d'entrée de la web app), `Versions.gs`, `Structure.gs`, etc. Sans `Code.gs`, la page ne s'ouvre pas.
+5. Dans `Setup.gs`, renseigner l'ID du fichier PARAMETRES_SOP dans `configurerParametres`, enregistrer, puis choisir cette fonction dans la liste « Exécuter » et la lancer. Lancer ensuite `installerDepuisEditeur` : le compte courant devient administrateur initial. Aucune autre adresse n'est créée. Lancer enfin `verifierInstallation` et lire le résultat dans le journal d'exécution.
+6. Déployer en **Application web** : exécuter en tant que **moi (le déployeur)**, accès **limité à l'organisation**. Ne jamais déployer en accès anonyme.
+7. Ouvrir l'URL `/exec`, onglet **Contrôles**, lancer les contrôles et corriger ce qui est signalé.
+
+Les fonctions de `Setup.gs` n'ont volontairement pas de `_` final : Apps Script masque dans la liste « Exécuter » les fonctions qui en portent un. Comme elles restent appelables depuis la page, chacune refuse tout appelant qui n'est pas le compte déployeur.
 
 Si la page affiche `IDENTITE_INDISPONIBLE`, les politiques Workspace empêchent de lire l'adresse du visiteur : demander à l'administrateur Workspace de corriger le déploiement, sans contourner le contrôle.
 
@@ -49,7 +52,7 @@ Si la page affiche `IDENTITE_INDISPONIBLE`, les politiques Workspace empêchent 
 
 ```
 python3 outils/structure.py   # régénère Structure.gs et les modèles si la structure change
-node tests/run.js             # 45 tests, aucune dépendance
+node tests/run.js             # 51 tests, aucune dépendance
 ```
 
 Les tests exécutent le vrai code Apps Script dans Node avec un double en mémoire de Google Sheets, construit à partir des en-têtes de `modeles/`. Ils ne couvrent ni les quotas de Google, ni les politiques du domaine, ni la lecture réelle de l'adresse du visiteur. Ces points se vérifient en recette, avec plusieurs comptes.

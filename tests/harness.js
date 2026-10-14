@@ -56,11 +56,11 @@ function creerClasseur(dossier, groupe) {
 
 function creerEnv() {
   const props = {};
-  const env = { utilisateur: '', classeurs: {}, verrouAttente: 0 };
+  const env = { utilisateur: '', proprietaire: 'admin@eureden.com', classeurs: {}, verrouAttente: 0 };
   const sandbox = {
     console: { log() {}, error() {} },
     JSON, Object, Array, String, Number, Math, Date, Error,
-    Session: { getActiveUser: () => ({ getEmail: () => env.utilisateur }) },
+    Session: { getActiveUser: () => ({ getEmail: () => env.utilisateur }), getEffectiveUser: () => ({ getEmail: () => env.proprietaire }) },
     PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => (k in props ? props[k] : null), setProperty: (k, v) => { props[k] = v; } }) },
     LockService: { getScriptLock: () => ({ waitLock() { env.verrouAttente++; }, releaseLock() { env.verrouAttente--; } }) },
     Utilities: { formatDate: () => new Date().toISOString().slice(0, 19) },

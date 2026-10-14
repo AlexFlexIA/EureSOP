@@ -260,6 +260,42 @@ test('contrôles : réservés à la configuration', () => {
   assert.strictEqual(erreur(env, 'Controles.run(Auth.resolve())'), 'CAPACITE_REFUSEE');
 });
 
+// ---------- Mise en service ----------
+test('les fonctions de mise en service n\'ont pas de _ final (sinon invisibles dans l\'éditeur)', () => {
+  const env = creerEnvStandard();
+  ['configurerParametres', 'installerDepuisEditeur', 'verifierInstallation'].forEach((nom) => assert.strictEqual(env.run('typeof ' + nom), 'function', nom));
+});
+test('installation : le déployeur devient administrateur initial', () => {
+  const env = creerEnvStandard(); env.moi('admin@eureden.com');
+  env.run('installerDepuisEditeur()');
+  assert.strictEqual(env.props.SOP_ADMINS, 'admin@eureden.com');
+  env.run('installerDepuisEditeur()');
+  assert.strictEqual(env.props.SOP_ADMINS, 'admin@eureden.com');
+});
+test('installation : un autre utilisateur de l\'organisation est refusé', () => {
+  const env = creerEnvStandard(); env.moi('guillaume@eureden.com');
+  assert.strictEqual(erreur(env, 'installerDepuisEditeur()'), 'JS:Fonction réservée au compte qui déploie l\'application.');
+  assert.ok(!env.props.SOP_ADMINS);
+  assert.strictEqual(erreur(env, "definirParametres_('AUTRE_ID')"), 'JS:Fonction réservée au compte qui déploie l\'application.');
+  assert.strictEqual(env.props.SOP_PARAM_ID, 'PARAM1');
+});
+test('installation : adresse illisible refusée', () => {
+  const env = creerEnvStandard(); env.moi('');
+  assert.ok(/réservée/.test(erreur(env, 'installerDepuisEditeur()')));
+});
+test('configuration : enregistre l\'ID, refuse le texte d\'exemple', () => {
+  const env = creerEnvStandard(); env.moi('admin@eureden.com');
+  env.run("definirParametres_('NOUVEL_ID')");
+  assert.strictEqual(env.props.SOP_PARAM_ID, 'NOUVEL_ID');
+  assert.ok(/Renseignez/.test(erreur(env, 'configurerParametres()')));
+});
+test('vérification : le déployeur voit les contrôles, pas les autres', () => {
+  const env = creerEnvStandard(); env.moi('admin@eureden.com');
+  assert.ok(env.run('verifierInstallation()') >= 1);
+  env.moi('guillaume@eureden.com');
+  assert.ok(/réservée/.test(erreur(env, 'verifierInstallation()')));
+});
+
 // ---------- Points d'entrée ----------
 test('apiDemarrage : réponse structurée', () => {
   const env = creerEnvStandard(); env.moi('guillaume@eureden.com');
