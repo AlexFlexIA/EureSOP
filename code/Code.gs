@@ -61,3 +61,11 @@ function apiControles() {
 function apiHistorique() {
   return reponse_(function () { return Histo.synthese(Auth.resolve()); });
 }
+
+function apiPrevision() {
+  return reponse_(function () { return Previsions.courante(Auth.resolve()); });
+}
+
+function apiCalculerStatistique(entree, idOperation) {
+  return reponse_(function () { return Previsions.calculer(Auth.resolve(), entree || {}, idOperation); });
+}

@@ -167,7 +167,7 @@ SORTIE = {
    ("Qte correction", D, ""), ("Qte arbitree", D, "Demande, comme si l'article était disponible"), ("Qte validee", D, ""),
    ("Qte reelle attendue", D, "Après ruptures déclarées dans RUPTURES. Vide si aucune"),
    ("Unite stock", T, ""), ("Poids article", D, "Copié du référentiel"),
-   ("Statut", "LISTE", "PREV_TC | ARBITREE | VALIDEE"), ("Version", T, "ID version courante"),
+   ("Statut", "LISTE", "STATISTIQUE | PREV_TC | ARBITREE | VALIDEE"), ("Version", T, "ID version courante"),
    ("Version coefficients", E, "Cadençage appliqué"), ("Modifie par", T, ""), ("Modifie le", DT, "")]),
  "AJUSTEMENTS_SEMAINE": ("Exceptions à la répartition normale : une correction ou un événement sur certaines semaines. Ajouts uniquement, jamais de suppression.", [
    ("ID ajustement", T, ""), ("Code produit", T, "Vide = tout le marché"), ("Marche", T, ""), ("Entite", T, ""), ("Plateforme", T, "* = toutes"),

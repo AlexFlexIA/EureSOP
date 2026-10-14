@@ -6,7 +6,7 @@ const path = require('path');
 const vm = require('vm');
 
 const RACINE = path.resolve(__dirname, '..');
-const FICHIERS_CODE = ['Structure.gs', 'Config.gs', 'Store.gs', 'Params.gs', 'Auth.gs', 'Journal.gs', 'Versions.gs', 'Histo.gs', 'Controles.gs', 'Setup.gs', 'Code.gs'];
+const FICHIERS_CODE = ['Structure.gs', 'Config.gs', 'Store.gs', 'Params.gs', 'Auth.gs', 'Journal.gs', 'Versions.gs', 'Histo.gs', 'Previsions.gs', 'Controles.gs', 'Setup.gs', 'Code.gs'];
 
 function enTetes(dossier, tab) {
   const ligne = fs.readFileSync(path.join(RACINE, 'modeles', dossier, tab + '.csv'), 'utf8').split('\n')[0].replace(/\r$/, '');
@@ -42,6 +42,7 @@ function creerFeuille(headers) {
           }
         },
         setValue(v) { this.setValues([[v]]); },
+        clearContent() { data.splice(r - 1, nr); },
         setNumberFormat(f) { formats.push({ r, c, nr, nc, f }); }
       };
     }

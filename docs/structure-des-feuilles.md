@@ -659,7 +659,7 @@ Version courante. Une ligne par article, entité et plateforme : le besoin sur l
 | Qte reelle attendue | DECIMAL | Après ruptures déclarées dans RUPTURES. Vide si aucune |
 | Unite stock | TEXTE |  |
 | Poids article | DECIMAL | Copié du référentiel |
-| Statut | LISTE | PREV_TC | ARBITREE | VALIDEE |
+| Statut | LISTE | STATISTIQUE | PREV_TC | ARBITREE | VALIDEE |
 | Version | TEXTE | ID version courante |
 | Version coefficients | ENTIER | Cadençage appliqué |
 | Modifie par | TEXTE |  |

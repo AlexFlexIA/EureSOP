@@ -92,3 +92,13 @@ Colonnes lues dans chaque onglet (reconnues par leur début, sans tenir compte d
 - L'application ne recoupe aucune période : elle prend le contenu de l'onglet.
 - Droits : global, ou périmètre limité à un Code TC et/ou une Entité. Un périmètre territoire, bassin ou marché ne donne accès à aucune ligne (ces fichiers ne portent pas ces informations).
 - Les contrôles de mise en service ouvrent chaque onglet et vérifient les colonnes.
+
+## Prévision statistique (v0.1.0)
+
+L'écran **Prévision** calcule, par article et par entité, la moyenne pondérée des années de l'historique du PAC.
+
+- Pondération : réglage `PONDERATION_ANNEES` (défaut `50/30/20`, dernière année en premier). Décimales : `PRECISION_QTE` (défaut 3).
+- Un article est calculé depuis sa première année de vente. Une année sans vente entre deux ventes compte 0. Un article sans vente la dernière année n'est pas reconduit (0).
+- Le calcul crée une version `STATISTIQUE` (scénario BASE), remplace `PREVISION` (plateforme `*` tant que l'affectation des plateformes n'est pas branchée), écrit la photo dans `INSTANTANES` et journalise.
+- Droits : capacité d'arbitrage et périmètre global. Campagne OUVERTE (ou PREPARATION pour les rôles de configuration).
+- Refus si la version courante est verrouillée, ou si `PREVISION` contient déjà des quantités de TC, d'événements, de correction ou d'arbitrage.

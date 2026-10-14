@@ -122,14 +122,15 @@ var Histo = (function () {
     };
   }
 
-  function synthese(actor) {
+  // toutVoir : ignore le périmètre (réservé aux calculs faits par un rôle au périmètre global).
+  function agreger(actor, toutVoir) {
     Auth.requireCap(actor, 'consultation');
     var campagne = txt(actor.campagne['ID campagne']);
     var liste = sources(campagne);
     if (!liste.length) {
       throw new AppError('HISTO_SANS_SOURCE', messageSansSource(campagne));
     }
-    var autorise = filtreAcces(actor);
+    var autorise = toutVoir ? function () { return true; } : filtreAcces(actor);
     var toutesAnnees = {};
     var totaux = {};
     var articles = {};
@@ -181,14 +182,19 @@ var Histo = (function () {
     var tous = Object.keys(articles).map(function (k) { return articles[k]; });
     var valeur = function (a) { var p = a.parAnnee[derniere]; return p ? p.mt : 0; };
     tous.sort(function (a, b) { return valeur(b) - valeur(a) || (a.code < b.code ? -1 : 1); });
+    return { annees: an, sources: infos, totaux: totauxListe, articles: tous, avertissements: avertissements };
+  }
+
+  function synthese(actor) {
+    var d = agreger(actor, false);
     return {
-      annees: an,
-      sources: infos,
-      totaux: totauxListe,
-      articles: tous.slice(0, MAX_ARTICLES),
-      nbArticles: tous.length,
-      tronque: tous.length > MAX_ARTICLES,
-      avertissements: avertissements
+      annees: d.annees,
+      sources: d.sources,
+      totaux: d.totaux,
+      articles: d.articles.slice(0, MAX_ARTICLES),
+      nbArticles: d.articles.length,
+      tronque: d.articles.length > MAX_ARTICLES,
+      avertissements: d.avertissements
     };
   }
 
@@ -212,5 +218,5 @@ var Histo = (function () {
     return res;
   }
 
-  return { sources: sources, synthese: synthese, verifier: verifier, _nombre: nombre };
+  return { sources: sources, filtre: filtreAcces, agreger: agreger, synthese: synthese, verifier: verifier, _nombre: nombre };
 })();

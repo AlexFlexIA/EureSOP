@@ -52,7 +52,7 @@
       '<div class="grille"><div class="carte"><h2>Votre accès</h2><ul class="liste">' +
       '<li><b>Adresse</b> ' + esc(s.utilisateur) + '</li><li><b>Rôle</b> ' + s.roles.map(function (r) { return pastille('p-marque', '●', r); }).join(' ') + '</li></ul></div>' +
       '<div class="carte"><h2>Ce que vous pouvez faire</h2><ul class="liste">' + droits + '</ul></div></div>' +
-      '<p class="note">Version ' + esc(s.version) + ' du socle. L\'historique est lu ; les écrans de prévision, de cadençage et de stock arrivent ensuite.</p>';
+      '<p class="note">Version ' + esc(s.version) + ' du socle. L\'historique et la prévision statistique sont en place ; le cadençage et le stock arrivent ensuite.</p>';
   }
 
   function ecranVersions() {
@@ -189,6 +189,73 @@
     });
   }
 
+  // ---------- Prévision statistique ----------
+  function ecranPrevision() {
+    return '<h1>Prévision statistique</h1><p class="sub">Moyenne pondérée des années d\'historique du PAC, par article et par entité. C\'est le point de départ du comité.</p>' +
+      '<div id="p-contenu"><div class="carte">Chargement…</div></div>';
+  }
+
+  function dessinerPrevision(d) {
+    var peutCalculer = etat.session.droits.arbitrage && etat.session.campagne.statut !== 'GELEE' && etat.session.campagne.statut !== 'CLOTUREE';
+    var poids = d.ponderation.join(' / ');
+    var action = peutCalculer ?
+      '<div class="rangee" style="margin-top:12px"><button class="btn pri" id="p-calculer" type="button">' + (d.version ? 'Recalculer la prévision statistique' : 'Calculer la prévision statistique') + '</button><span id="p-message" class="note" role="status"></span></div>' +
+      '<p class="note">Pondération (dernière année en premier) : ' + esc(poids) + ', réglage PONDERATION_ANNEES. Un article sans vente la dernière année n\'est pas reconduit. Un recalcul crée une nouvelle version et archive la précédente.</p>' :
+      '<p class="note">Votre rôle ne permet pas de lancer le calcul.</p>';
+    if (!d.version) {
+      $('#p-contenu').innerHTML = '<div class="carte"><h2>Aucune prévision pour le moment</h2><p>Le calcul lit l\'historique, crée une version « Statistique » et remplit la prévision.</p>' + action + '</div>';
+      brancherCalcul();
+      return;
+    }
+    var v = d.version;
+    var entete = '<div class="carte"><h2>Version courante</h2><ul class="liste"><li><b>' + esc(v.id) + '</b> ' + pastille('p-marque', '●', v.type) + (v.verrouillee ? ' ' + pastille('p-marque', '■', 'Verrouillée') : '') + '</li>' +
+      '<li>' + esc(v.libelle) + '</li><li class="note">Créée le ' + esc(v.creeLe.replace('T', ' ')) + ' par ' + esc(v.creePar) + '</li></ul>' + action + '</div>';
+    var tot = '<div class="carte"><h2>Totaux par entité</h2><div class="tableau"><table><thead><tr><th>Entité</th><th>Articles</th><th>Quantité année précédente</th><th>Quantité statistique</th><th>Écart</th></tr></thead><tbody>' +
+      d.totaux.map(function (t) {
+        return '<tr><td>' + esc(t.entite) + '</td><td class="n">' + n0(t.articles) + '</td><td class="n">' + n0(t.n1) + '</td><td class="n">' + n0(t.statistique) + '</td><td>' + variation(t.statistique, t.n1) + '</td></tr>';
+      }).join('') + '</tbody></table></div><p class="note">La quantité additionne des unités de stock différentes (sacs, bidons, kg).</p></div>';
+    var liste = '<div class="carte"><h2>Articles</h2><div class="grille"><div><label for="p-entite">Entité</label><select id="p-entite"><option value="">Toutes</option>' +
+      d.totaux.map(function (t) { return '<option>' + esc(t.entite) + '</option>'; }).join('') + '</select></div>' +
+      '<div><label for="p-texte">Rechercher (code ou libellé)</label><input id="p-texte" type="search" maxlength="60"></div></div>' +
+      '<div class="tableau" id="p-table" style="margin-top:12px"></div><p class="note" id="p-note"></p></div>';
+    $('#p-contenu').innerHTML = entete + tot + liste;
+    brancherCalcul();
+
+    function filtrer() {
+      var e = $('#p-entite').value, q = $('#p-texte').value.trim().toLowerCase();
+      var sel = d.articles.filter(function (a) { return (!e || a.entite === e) && (!q || a.code.toLowerCase().indexOf(q) >= 0 || a.libelle.toLowerCase().indexOf(q) >= 0); });
+      $('#p-table').innerHTML = sel.length ? '<table><thead><tr><th>Code</th><th>Libellé</th><th>Entité</th><th>Année précédente</th><th>Statistique</th><th>Écart</th></tr></thead><tbody>' +
+        sel.slice(0, 200).map(function (a) {
+          return '<tr><td>' + esc(a.code) + '</td><td>' + esc(a.libelle) + '</td><td>' + esc(a.entite) + '</td><td class="n">' + n0(a.n1) + '</td><td class="n">' + n0(a.statistique) + '</td><td>' + variation(a.statistique, a.n1) + '</td></tr>';
+        }).join('') + '</tbody></table>' : '<p class="note">Aucun article ne correspond.</p>';
+      $('#p-note').textContent = sel.length + ' article(s)' + (sel.length > 200 ? ', 200 affichés : affinez la recherche' : '') + (d.tronque ? ' · ' + d.nbArticles + ' articles au total, les ' + d.articles.length + ' premiers par quantité sont chargés' : '') + '.';
+    }
+    $('#p-entite').onchange = filtrer; $('#p-texte').oninput = filtrer; filtrer();
+  }
+
+  function brancherCalcul() {
+    var b = $('#p-calculer');
+    if (!b) return;
+    b.onclick = function () {
+      var msg = $('#p-message');
+      b.disabled = true; msg.textContent = 'Calcul en cours, cela peut durer une minute…';
+      appel('apiCalculerStatistique', {}, idOperation()).then(function (r) {
+        if (!r.ok) { b.disabled = false; msg.textContent = r.message; return; }
+        toast('Version ' + r.data.resultat.idVersion + ' créée, ' + r.data.resultat.lignes + ' lignes.');
+        chargerPrevision();
+      });
+    };
+  }
+
+  function chargerPrevision() {
+    appel('apiPrevision').then(function (r) {
+      var c = $('#p-contenu');
+      if (!c) return;
+      if (!r.ok) { c.innerHTML = '<div class="carte"><h2>Prévision indisponible</h2><p>' + esc(r.message) + '</p><p class="note">Code : ' + esc(r.code) + '</p></div>'; return; }
+      dessinerPrevision(r.data);
+    });
+  }
+
   function ecranControles() {
     return '<h1>Contrôles de mise en service</h1><p class="sub">Vérifie les classeurs, la campagne et les accès avant l\'ouverture.</p>' +
       '<div class="carte"><div class="rangee"><button class="btn pri" id="c-lancer" type="button">Lancer les contrôles</button><span id="c-etat" class="note" role="status"></span></div><div id="c-resultats" style="margin-top:12px"></div></div>';
@@ -211,7 +278,7 @@
 
   // ---------- Navigation ----------
   function onglets() {
-    var o = [['accueil', 'Accueil'], ['historique', 'Historique'], ['versions', 'Versions']];
+    var o = [['accueil', 'Accueil'], ['historique', 'Historique'], ['prevision', 'Prévision'], ['versions', 'Versions']];
     if (etat.session.droits.configuration) o.push(['controles', 'Contrôles']);
     return o;
   }
@@ -224,6 +291,7 @@
     Array.prototype.forEach.call($('#menu').querySelectorAll('button'), function (b) { b.onclick = function () { afficher(b.getAttribute('data-onglet')); }; });
     var c = $('#contenu');
     if (nom === 'historique') { c.innerHTML = ecranHistorique(); chargerHistorique(); }
+    else if (nom === 'prevision') { c.innerHTML = ecranPrevision(); chargerPrevision(); }
     else if (nom === 'versions') { c.innerHTML = ecranVersions(); chargerVersions(); brancherFormVersion(); }
     else if (nom === 'controles') { c.innerHTML = ecranControles(); brancherControles(); }
     else c.innerHTML = ecranAccueil();

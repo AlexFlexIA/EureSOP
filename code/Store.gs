@@ -78,6 +78,14 @@ var Store = (function () {
     invalider(id, tab);
   }
 
+  // Efface toutes les lignes de données, l'en-tête est conservé.
+  function viderDonnees(id, tab) {
+    var sh = sheet(id, tab);
+    var nr = sh.getLastRow();
+    if (nr > 1) sh.getRange(2, 1, nr - 1, Math.max(sh.getLastColumn(), 1)).clearContent();
+    invalider(id, tab);
+  }
+
   // Met à jour des cellules d'une ligne déjà lue (numéro de ligne dans _row).
   function updateRow(id, tab, ligne, valeurs) {
     var sh = sheet(id, tab);
@@ -103,5 +111,5 @@ var Store = (function () {
     return { ok: manquants.length === 0 && inconnus.length === 0, manquants: manquants, inconnus: inconnus, ordre: ordre };
   }
 
-  return { read: read, append: append, updateRow: updateRow, checkHeaders: checkHeaders, invalider: invalider };
+  return { read: read, append: append, viderDonnees: viderDonnees, updateRow: updateRow, checkHeaders: checkHeaders, invalider: invalider };
 })();

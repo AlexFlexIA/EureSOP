@@ -469,6 +469,130 @@ test('historique : contrôles signalent un onglet qui ne s\'ouvre pas', () => {
   assert.strictEqual(c[0].niveau, 'ERREUR');
 });
 
+// ---------- Prévision statistique ----------
+function envPrev() {
+  const env = envHisto();
+  env.semer('PARAM_FICHIER_TEST_00001', 'REGLAGES', [{ Cle: 'PONDERATION_ANNEES', Valeur: '50/30/20' }]);
+  return env;
+}
+const statistique = (env, parAnnee, annees, poids) => env.run('Previsions.statistique(' + JSON.stringify(parAnnee) + ',' + JSON.stringify(annees) + ',' + JSON.stringify(poids) + ')');
+
+test('statistique : moyenne pondérée sur trois années', () => {
+  const env = creerEnvStandard();
+  const v = statistique(env, { 2024: { qte: 100 }, 2025: { qte: 200 }, 2026: { qte: 300 } }, ['2024', '2025', '2026'], [50, 30, 20]);
+  assert.strictEqual(v, (300 * 50 + 200 * 30 + 100 * 20) / 100);
+});
+test('statistique : article né l\'année dernière = sa quantité', () => {
+  const env = creerEnvStandard();
+  assert.strictEqual(statistique(env, { 2026: { qte: 80 } }, ['2024', '2025', '2026'], [50, 30, 20]), 80);
+});
+test('statistique : année sans vente entre deux ventes compte pour 0', () => {
+  const env = creerEnvStandard();
+  const v = statistique(env, { 2024: { qte: 100 }, 2026: { qte: 100 } }, ['2024', '2025', '2026'], [50, 30, 20]);
+  assert.strictEqual(v, (100 * 50 + 0 * 30 + 100 * 20) / 100);
+});
+test('statistique : article sans vente la dernière année non reconduit', () => {
+  const env = creerEnvStandard();
+  assert.strictEqual(statistique(env, { 2024: { qte: 100 }, 2025: { qte: 100 } }, ['2024', '2025', '2026'], [50, 30, 20]), 0);
+});
+test('statistique : plus d\'années que de poids, les plus anciennes sont ignorées', () => {
+  const env = creerEnvStandard();
+  const v = statistique(env, { 2023: { qte: 1000 }, 2024: { qte: 100 }, 2025: { qte: 100 } }, ['2023', '2024', '2025'], [60, 40]);
+  assert.strictEqual(v, 100);
+});
+test('pondération invalide refusée', () => {
+  const env = envPrev(); env.moi('guillaume@eureden.com');
+  env.feuille('PARAM_FICHIER_TEST_00001', 'REGLAGES')._data[2][1] = '50/abc';
+  assert.strictEqual(env.run("apiCalculerStatistique({}, 'op1')").code, 'PONDERATION_INVALIDE');
+});
+test('calcul statistique : version, prévision, photo et journal écrits', () => {
+  const env = envPrev(); env.moi('guillaume@eureden.com');
+  const r = env.run("apiCalculerStatistique({}, 'op1')");
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(r.data.resultat.idVersion, 'V001');
+  assert.strictEqual(r.data.resultat.lignes, 2);
+  const prev = env.lignes('SORTIE1', 'PREVISION');
+  assert.strictEqual(prev.length, 2);
+  const dap = prev.filter((x) => x['Code produit'] === '1109939')[0];
+  assert.strictEqual(dap.Statut, 'STATISTIQUE');
+  assert.strictEqual(dap.Plateforme, '*');
+  assert.strictEqual(dap['Qte historique corrigee N-1'], 900 + 16000);
+  assert.strictEqual(dap["Qte statistique"], 16345.188);
+  assert.strictEqual(env.lignes('SORTIE1', 'INSTANTANES').length, 2);
+  assert.strictEqual(env.lignes('SORTIE1', 'VERSIONS')[0].Type, 'STATISTIQUE');
+  assert.ok(env.lignes('SORTIE1', 'JOURNAL').some((j) => j.Action === 'PREVISION_STATISTIQUE'));
+});
+test('calcul statistique : rejouer la même opération n\'écrit rien de plus', () => {
+  const env = envPrev(); env.moi('guillaume@eureden.com');
+  env.run("apiCalculerStatistique({}, 'op1')");
+  const r = env.run("apiCalculerStatistique({}, 'op1')");
+  assert.strictEqual(r.data.rejoue, true);
+  assert.strictEqual(env.lignes('SORTIE1', 'PREVISION').length, 2);
+  assert.strictEqual(env.lignes('SORTIE1', 'VERSIONS').length, 1);
+});
+test('calcul statistique : un recalcul remplace PREVISION et archive la version précédente', () => {
+  const env = envPrev(); env.moi('guillaume@eureden.com');
+  env.run("apiCalculerStatistique({}, 'op1')");
+  env.run("apiCalculerStatistique({}, 'op2')");
+  assert.strictEqual(env.lignes('SORTIE1', 'PREVISION').length, 2);
+  const v = env.lignes('SORTIE1', 'VERSIONS');
+  assert.strictEqual(v.length, 2);
+  assert.strictEqual(v[0].Statut, 'ARCHIVEE');
+  assert.strictEqual(v[1].Statut, 'COURANTE');
+  assert.strictEqual(env.lignes('SORTIE1', 'INSTANTANES').length, 4);
+});
+test('calcul statistique : refusé sans capacité d\'arbitrage', () => {
+  const env = envPrev(); env.moi('rm.engrais@eureden.com');
+  assert.strictEqual(env.run("apiCalculerStatistique({}, 'op1')").code, 'CAPACITE_REFUSEE');
+  assert.strictEqual(env.lignes('SORTIE1', 'PREVISION').length, 0);
+});
+test('calcul statistique : refusé quand la campagne est gelée', () => {
+  const env = envPrev(); env.moi('guillaume@eureden.com');
+  env.feuille('PARAM_FICHIER_TEST_00001', 'CAMPAGNES')._data[1][10] = 'GELEE';
+  assert.strictEqual(env.run("apiCalculerStatistique({}, 'op1')").code, 'CAMPAGNE_FERMEE');
+});
+test('calcul statistique : refusé si la version courante est verrouillée', () => {
+  const env = envPrev(); env.moi('admin@eureden.com');
+  env.run("apiCalculerStatistique({}, 'op1')");
+  env.run("apiVerrouillerVersion('V001', 'op2')");
+  assert.strictEqual(env.run("apiCalculerStatistique({}, 'op3')").code, 'VERSION_VERROUILLEE');
+});
+test('calcul statistique : refusé si des quantités de travail existent', () => {
+  const env = envPrev(); env.moi('guillaume@eureden.com');
+  env.run("apiCalculerStatistique({}, 'op1')");
+  env.feuille('SORTIE1', 'PREVISION')._data[1][env.feuille('SORTIE1', 'PREVISION')._data[0].indexOf('Qte arbitree')] = 123;
+  assert.strictEqual(env.run("apiCalculerStatistique({}, 'op2')").code, 'PREVISION_TRAVAILLEE');
+  assert.strictEqual(env.lignes('SORTIE1', 'VERSIONS').length, 1);
+});
+test('précision : réglage vide = 3 décimales, réglage 0 = entiers', () => {
+  const env = envPrev(); env.moi('guillaume@eureden.com');
+  assert.strictEqual(env.run('Previsions.calculer.length') >= 0, true);
+  env.semer('PARAM_FICHIER_TEST_00001', 'REGLAGES', [{ Cle: 'PRECISION_QTE', Valeur: '0' }]);
+  env.run("apiCalculerStatistique({}, 'op1')");
+  assert.strictEqual(env.lignes('SORTIE1', 'PREVISION').filter((x) => x['Code produit'] === '1109939')[0]['Qte statistique'], 16345);
+});
+test('prévision courante : libellés joints, totaux par entité', () => {
+  const env = envPrev(); env.moi('guillaume@eureden.com');
+  env.run("apiCalculerStatistique({}, 'op1')");
+  const r = env.run('apiPrevision()');
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(r.data.version.id, 'V001');
+  assert.strictEqual(r.data.articles[0].libelle, 'D.A.P. 35K');
+  assert.strictEqual(r.data.totaux.length, 2);
+});
+test('prévision courante : vide avant tout calcul', () => {
+  const env = envPrev(); env.moi('guillaume@eureden.com');
+  const r = env.run('apiPrevision()');
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(r.data.version, null);
+});
+test('prévision courante : un TC n\'en voit rien', () => {
+  const env = envPrev(); env.moi('guillaume@eureden.com');
+  env.run("apiCalculerStatistique({}, 'op1')");
+  env.moi('tc.ok@eureden.com');
+  assert.strictEqual(env.run('apiPrevision()').data.articles.length, 0);
+});
+
 let echecs = 0;
 tests.forEach(({ nom, fn }) => {
   try { fn(); console.log('  ok   ' + nom); } catch (e) { echecs++; console.log('  ECHEC ' + nom + '\n        ' + (e.message || e).split('\n')[0]); }
