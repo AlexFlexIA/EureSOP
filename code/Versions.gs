@@ -125,7 +125,14 @@ var Versions = (function () {
         Store.append(ctx.idSortie, 'INSTANTANES', photos);
         Journal.log(ctx.idSortie, acteur, 'VERSION_VALIDEE', version.idVersion, txt(cour['ID version']), lignes.length + ' ligne(s)', txt(entree.commentaire), idOperation);
         var publie = null;
-        if (typeof Publication !== 'undefined') publie = Publication.publier(acteur, ctx, version, lignes, idOperation);
+        if (typeof Publication !== 'undefined') {
+          // La validation est acquise : un échec de publication ne doit pas empêcher d'enregistrer le reçu (on republie ensuite).
+          try { publie = Publication.publier(acteur, ctx, version, lignes, idOperation); }
+          catch (e) {
+            publie = { publie: false, erreur: (e && e.message) ? String(e.message).slice(0, 300) : 'Publication impossible.' };
+            Journal.log(ctx.idSortie, acteur, 'PUBLICATION_ECHEC', version.idVersion, '', publie.erreur, '', idOperation);
+          }
+        }
         return { idVersion: version.idVersion, lignes: lignes.length, total: total, publication: publie };
       });
     });
