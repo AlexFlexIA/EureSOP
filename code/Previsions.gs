@@ -324,7 +324,7 @@ var Previsions = (function () {
     var rows = Store.read(ctx.idSortie, 'PREVISION').rows;
     if (!version || !rows.length) return { version: null, ponderation: ponderations(), articles: [], totaux: [], anneeReference: '' };
     var autorise = Histo.filtre(acteur);
-    var visibles = rows.filter(function (r) { return autorise(txt(r.Entite), ''); });
+    var visibles = rows.filter(function (r) { return autorise(txt(r.Entite), '', txt(r['Code produit'])); });
     var histoParCle = {};
     var anneeReference = '';
     try {

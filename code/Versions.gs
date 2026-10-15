@@ -165,7 +165,7 @@ var Versions = (function () {
     Object.keys(cles).forEach(function (k) {
       var id; try { id = JSON.parse(k); } catch (e) { return; }
       var entite = id[1], code = id[2];
-      if (!autorise(entite, '')) return;
+      if (!autorise(entite, '', code)) return;
       var va = photos[a.id][k] || 0, vb = photos[b.id][k] || 0;
       tot.a += va; tot.b += vb;
       if (arr(vb - va) !== 0) modifiees++;

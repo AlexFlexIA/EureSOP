@@ -101,8 +101,12 @@ var Histo = (function () {
     return { onglet: onglet, position: position, lignes: donnees.rows };
   }
 
-  // Droits de lecture : global, ou périmètre fait uniquement de Code TC et d'Entité. Tout autre périmètre
-  // (territoire, bassin, marché) ne peut pas être évalué sur ces fichiers et ne donne accès à rien.
+  // Droits de lecture : global ou conditions évaluables (le calendrier d'un accès n'est pas une condition de lecture).
+  // Renvoie autorise(entite, codeTc, codeProduit). Chaque condition d'un accès doit être évaluable :
+  //  - entité, code TC : directement ;
+  //  - département, territoire, bassin, plateforme : par le référentiel des TC (code TC obligatoire) ;
+  //  - marché : par le catalogue des produits (code produit obligatoire).
+  // Une condition qu'on ne peut pas évaluer avec les informations passées refuse la ligne (jamais d'ouverture par défaut).
   function filtreAcces(actor) {
     var regles = [];
     actor.roles.forEach(function (r) {
@@ -110,14 +114,28 @@ var Histo = (function () {
       if (!profil || !profil.consultation) return;
       if (r.perimetre.global) { regles.push({ tout: true }); return; }
       var p = r.perimetre;
-      var inevaluable = ['departement', 'territoire', 'bassin', 'marche', 'plateforme'].some(function (k) { return !!p[k]; });
-      if (inevaluable || (!p.codeTc && !p.entite)) return;
-      regles.push({ codeTc: p.codeTc, entite: p.entite });
+      var conds = ['codeTc', 'entite', 'departement', 'territoire', 'bassin', 'plateforme', 'marche'].filter(function (k) { return !!p[k]; });
+      if (!conds.length) return;
+      regles.push({ p: p, conds: conds });
     });
-    return function (entite, codeTc) {
+    var tc = null, cat = null;
+    var infosTC = function () { return tc || (tc = Referentiel.charger(actor)); };
+    var catalogue = function () { return cat || (cat = Catalogue.lire(actor)); };
+    return function (entite, codeTc, codeProduit) {
       return regles.some(function (g) {
         if (g.tout) return true;
-        return (!g.codeTc || g.codeTc === norm(codeTc)) && (!g.entite || g.entite === norm(entite));
+        return g.conds.every(function (k) {
+          if (k === 'entite') return g.p.entite === norm(entite);
+          if (k === 'codeTc') return !!txt(codeTc) && g.p.codeTc === norm(codeTc);
+          if (k === 'marche') {
+            if (!txt(codeProduit)) return false;
+            var c = catalogue()[txt(codeProduit)];
+            return !!c && norm(c.marche) === g.p.marche;
+          }
+          if (!txt(codeTc)) return false;
+          var info = infosTC()[txt(codeTc)];
+          return !!info && norm(info[k]) === g.p[k];
+        });
       });
     };
   }
@@ -164,7 +182,7 @@ var Histo = (function () {
           var code = codeTexte(l[o.position.code]);
           if (!code) { sansCode++; return; }
           var codeTc = codeTexte(l[o.position.codeTc]);
-          if (!autorise(entite, codeTc)) return;
+          if (!autorise(entite, codeTc, code)) return;
           var qte = nombre(l[o.position.qte]), ha = nombre(l[o.position.ha]), mt = nombre(l[o.position.mt]);
           t.lignes++; t.qte += qte; t.ha += ha; t.montant += mt;
           info.lignes++;

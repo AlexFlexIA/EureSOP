@@ -224,16 +224,16 @@ var Ajustements = (function () {
     var ctx = Versions.contexte(acteur);
     var autorise = Histo.filtre(acteur);
     var corrections = Store.read(ctx.idSortie, 'AJUSTEMENTS_SEMAINE').rows
-      .filter(function (r) { return norm(r.Type) === 'CORRECTION' && norm(r.Statut) === 'ACTIF' && autorise(txt(r.Entite), ''); })
+      .filter(function (r) { return norm(r.Type) === 'CORRECTION' && norm(r.Statut) === 'ACTIF' && autorise(txt(r.Entite), '', txt(r['Code produit'])); })
       .map(function (r) { return { id: txt(r['ID ajustement']), code: txt(r['Code produit']), entite: txt(r.Entite), quantite: txt(r.Quantite), pourcent: txt(r.Pourcent), motif: txt(r.Motif), par: txt(r['Cree par']), le: txt(r['Cree le']) }; });
     var evenements = Store.read(ctx.idSortie, 'EVENEMENTS_COMMERCE').rows
-      .filter(function (r) { return yes(r.Actif) && autorise(txt(r.Entite), ''); })
+      .filter(function (r) { return yes(r.Actif) && autorise(txt(r.Entite), '', txt(r['Code produit'])); })
       .map(function (r) { return { id: txt(r['ID evenement']), type: norm(r.Type), code: txt(r['Code produit']), entite: txt(r.Entite), quantite: txt(r['Impact quantite']), pourcent: txt(r['Impact pourcent']), commentaire: txt(r.Commentaire), par: txt(r['Saisi par']), le: txt(r['Saisi le']) }; });
     var substitutions = Store.read(Params.idFichier(), 'SUBSTITUTIONS').rows
-      .filter(function (r) { return yes(r.Actif) && txt(r['Code ancien']) && autorise(txt(r.Entite), ''); })
+      .filter(function (r) { return yes(r.Actif) && txt(r['Code ancien']) && autorise(txt(r.Entite), '', txt(r['Code ancien'])); })
       .map(function (r) { return { id: txt(r['ID substitution']), nature: txt(r['Code nouveau']) ? 'SUBSTITUTION' : 'ARRET', ancien: txt(r['Code ancien']), nouveau: txt(r['Code nouveau']), entite: txt(r.Entite), taux: txt(r['Taux de report']) || '100', motif: norm(r.Motif), effet: txt(r['Date effet']), fin: txt(r['Date fin']), commentaire: txt(r.Commentaire), par: txt(r['Renseigne par']) }; });
     var historique = Store.read(ctx.idSortie, 'CORRECTIONS_HISTO').rows
-      .filter(function (r) { return norm(r.Statut) === 'ACTIVE' && autorise(txt(r.Entite), ''); })
+      .filter(function (r) { return norm(r.Statut) === 'ACTIVE' && autorise(txt(r.Entite), '', txt(r['Code produit'])); })
       .map(function (r) { return { id: txt(r['ID correction']), code: txt(r['Code produit']), entite: txt(r.Entite), annee: txt(r['Semaine debut']).slice(0, 4), type: norm(r.Type), brute: Number(r['Qte brute']) || 0, corrigee: Number(r['Qte corrigee']) || 0, motif: txt(r.Motif), commentaire: txt(r.Commentaire), par: txt(r['Cree par']), le: txt(r['Cree le']) }; });
     return { corrections: corrections, evenements: evenements, substitutions: substitutions, historique: historique, entites: Histo.sources(ctx.idCampagne).map(function (s) { return txt(s.Entite); }) };
   }

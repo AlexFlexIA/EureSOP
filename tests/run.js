@@ -2060,6 +2060,22 @@ test('relecture : un TC avec Code technicien « * » n\'a pas d\'accès', () => 
   env.moi('tc.joker@eureden.com');
   assert.strictEqual(erreur(env, 'Auth.resolve()'), 'ACCES_REFUSE');
 });
+test('référentiel TC : un RT voit l\'historique des TC de son territoire, et la plateforme se déduit du bassin', () => {
+  const env = envHisto();
+  env.semer('PARAM_FICHIER_TEST_00001', 'TC', [
+    { 'Code technicien': '102441', Entite: 'Coop EUREDEN', 'Territoire TC': 'Argoat Centre Bretagne', 'Bassin TC': 'Glomel', Actif: 'OUI' },
+    { 'Code technicien': '199405', Entite: 'Coop EUREDEN', 'Territoire TC': 'Autre', 'Bassin TC': 'Ailleurs', Actif: 'OUI' }]);
+  env.semer('PARAM_FICHIER_TEST_00001', 'AFFECTATION_PLATEFORME', [{ Entite: 'Coop EUREDEN', 'Bassin TC': 'Glomel', Plateforme: 'PF Glomel', Validation: 'VALIDE' }]);
+  env.nouvelleExecution();
+  env.moi('rt.argoat@eureden.com');
+  const r = env.run('apiHistorique()').data;
+  const t = r.totaux.filter((x) => x.entite === 'Coop EUREDEN' && x.annee === '2024')[0];
+  assert.strictEqual(t.lignes, 1);
+  assert.strictEqual(t.qte, 14420);
+  const ref = env.run('Referentiel.charger(Auth.resolve())');
+  assert.strictEqual(ref['102441'].plateforme, 'PF GLOMEL');
+  assert.strictEqual(ref['199405'].plateforme, '');
+});
 
 let echecs = 0;
 tests.forEach(({ nom, fn }) => {

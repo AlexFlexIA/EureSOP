@@ -42,11 +42,17 @@ var PrevTC = (function () {
     // Catalogue des produits (facultatif) : libellé, marché (groupe de structure), famille, segment, unité de stock. Première valeur non vide par code.
     var cLib = trouver('libelle produit'), cMarche = trouver('libelle groupe structure'), cFamille = trouver('libelle famille structure');
     var cSegment = trouver('segmentation'), cUnite = trouver('libelle abrege unite');
-    var catalogue = {};
+    var cDep = trouver('departement'), cTerr = trouver('territoire'), cBassin = trouver('bassin'), cCal = trouver('calendrier');
+    var catalogue = {}, tcInfos = {};
     var parArticle = {}, tcSaisis = {}, tcTous = {}, saisissables = 0, renseignees = 0;
     d.rows.forEach(function (r) {
       var code = codeTexte(r[cCode]), entite = txt(r[cEnt]), tc = codeTexte(r[cTc]);
       if (!code || !entite) return;
+      var tcX = tcInfos[tc] = tcInfos[tc] || { entite: entite, departement: '', territoire: '', bassin: '', calendrier: '' };
+      if (cDep && !tcX.departement) tcX.departement = txt(r[cDep]);
+      if (cTerr && !tcX.territoire) tcX.territoire = txt(r[cTerr]);
+      if (cBassin && !tcX.bassin) tcX.bassin = txt(r[cBassin]);
+      if (cCal && !tcX.calendrier) tcX.calendrier = txt(r[cCal]);
       var cat = catalogue[code] = catalogue[code] || { libelle: '', marche: '', famille: '', segment: '', unite: '' };
       if (!cat.libelle && cLib) cat.libelle = txt(r[cLib]);
       if (!cat.marche && cMarche) cat.marche = txt(r[cMarche]);
@@ -63,7 +69,7 @@ var PrevTC = (function () {
       x.qte += q; x.nbTC++;
     });
     return {
-      parArticle: parArticle, colonne: cPrev, catalogue: catalogue,
+      parArticle: parArticle, colonne: cPrev, catalogue: catalogue, tcInfos: tcInfos,
       couverture: { lignes: d.rows.length, saisissables: saisissables, renseignees: renseignees, tc: Object.keys(tcTous).length, tcAyantSaisi: Object.keys(tcSaisis).length }
     };
   }

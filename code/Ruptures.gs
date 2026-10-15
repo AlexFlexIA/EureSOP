@@ -51,7 +51,7 @@ var Ruptures = (function () {
     Auth.requireCap(acteur, 'consultation');
     var ctx = Versions.contexte(acteur);
     var autorise = Histo.filtre(acteur);
-    return actives(ctx).filter(function (r) { return autorise(r.entite, ''); });
+    return actives(ctx).filter(function (r) { return autorise(r.entite, '', r.code); });
   }
 
   // entree : { entite, code, debut, fin, origine, cause, traitement, taux, retour, substitut, commentaire }
