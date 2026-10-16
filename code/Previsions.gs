@@ -346,6 +346,10 @@ var Previsions = (function () {
     var num = function (v) { var n = Number(v); return isFinite(n) && txt(v) !== '' ? n : 0; };
     var zero = function () { return { n1: 0, statistique: 0, tc: 0, evenements: 0, correction: 0, substitution: 0, retenue: 0, reel: 0 }; };
     var baseTc = norm(Params.reglages().BASE_ARBITRAGE) === 'TC';
+    // Tant que la version n'est pas validée, la saisie des TC se relit à chaque affichage : elle évolue sans recalcul.
+    // Une saisie arrivée après le calcul est ainsi visible tout de suite (elle ne devient la base d'arbitrage qu'au prochain calcul).
+    var tcDirect = null;
+    if (!yes(version.Verrouillee)) { try { var lu = PrevTC.lire(acteur); if (lu) tcDirect = lu.parArticle; } catch (e) { if (!(e && e.code)) throw e; } }
     var totaux = {}, totauxMarche = {};
     var articles = visibles.map(function (r) {
       var entite = txt(r.Entite), code = txt(r['Code produit']);
@@ -354,10 +358,12 @@ var Previsions = (function () {
       var n1 = num(r['Qte historique corrigee N-1']), stat = num(r['Qte statistique']);
       var ev = num(r['Qte evenements']), co = num(r['Qte correction']), su = num(r['Qte substitution']);
       var tc = txt(r['Qte TC']) !== '' ? num(r['Qte TC']) : null;
+      var tcStocke = tc;
+      if (tcDirect) { var tcLive = tcDirect[norm(entite) + '|' + code]; if (tcLive) tc = tcLive.qte; }
       var reel = txt(r['Qte reelle attendue']) !== '' ? num(r['Qte reelle attendue']) : null;
       var arbitree = txt(r['Qte arbitree']) !== '';
       var retenue = arbitree ? num(r['Qte arbitree']) : stat;
-      var depart = arbitree && baseTc && tc !== null ? tc : stat;
+      var depart = arbitree && baseTc && tcStocke !== null ? tcStocke : stat;
       var marche = cat.marche || '';
       var t = totaux[entite] = totaux[entite] || { entite: entite, articles: 0, q: zero(), ha: zero(), eur: zero() };
       var tm = totauxMarche[entite + '|' + marche] = totauxMarche[entite + '|' + marche] || { entite: entite, marche: marche, articles: 0, q: zero(), ha: zero(), eur: zero() };

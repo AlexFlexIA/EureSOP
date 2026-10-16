@@ -2109,6 +2109,17 @@ test('saisie des TC : la colonne « PREV 2026 en QTE » sert à saisir 2027 quan
   assert.strictEqual(lu.colonne, 'PREV 2026 en QTE');
   assert.strictEqual(lu.parArticle['COOP EUREDEN|1109939'].qte, 17000.5);
 });
+test('prévision courante : la saisie des TC arrivée après le calcul est visible sans recalcul, jusqu\'à la validation', () => {
+  const env = envTC();
+  appel(env, 'calculerStatistique', [{ libelle: 'v1' }, 'c1']);
+  const avant = appel(env, 'prevision').data.articles.filter((a) => a.code === '1109939')[0];
+  assert.strictEqual(avant.tc, 17000.5);
+  env.classeurs[F_TC]._feuilles.DONNEES._data[1][6] = 1000;
+  appel(env, 'actualiser', [{}, 'a1']);
+  env.nouvelleExecution();
+  const apres = appel(env, 'prevision').data.articles.filter((a) => a.code === '1109939')[0];
+  assert.strictEqual(apres.tc, 9000.5);
+});
 
 let echecs = 0;
 tests.forEach(({ nom, fn }) => {
