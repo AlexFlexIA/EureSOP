@@ -37,7 +37,10 @@ var PrevTC = (function () {
     var cEnt = trouver('canal de distribution'), cCode = trouver('code produit'), cTc = trouver('code technicien'), cSaisie = trouver('saisie pour previsions');
     if (!cEnt || !cCode || !cTc) throw new AppError('SOURCE_COLONNES', 'Prévisions des TC : colonnes manquantes (Canal de distribution, Code produit, Code technicien).');
     var candidates = h.filter(function (x) { return /^prev \d{4} en qte$/.test(canon(x)); });
-    var cPrev = annee ? candidates.filter(function (x) { return canon(x).indexOf('prev ' + annee + ' ') === 0; })[0] : (candidates.length === 1 ? candidates[0] : null);
+    // Les colonnes de saisie d'EurePrev gardent leur intitulé d'une campagne à l'autre (ex. « PREV 2026 en QTE » pour saisir 2027) :
+    // à défaut de colonne de l'année de prévision, l'unique colonne PREV … en QTE est prise.
+    var cPrev = annee ? candidates.filter(function (x) { return canon(x).indexOf('prev ' + annee + ' ') === 0; })[0] : null;
+    if (!cPrev && candidates.length === 1) cPrev = candidates[0];
     if (!cPrev) throw new AppError('SOURCE_COLONNES', 'Prévisions des TC : colonne « PREV ' + (annee || 'AAAA') + ' en QTE » introuvable dans ' + (txt(src.Onglet) || 'DONNEES') + '. Colonnes PREV trouvées : ' + (candidates.length ? candidates.join(', ') : 'aucune') + '.');
     // Catalogue des produits (facultatif) : libellé, marché (groupe de structure), famille, segment, unité de stock. Première valeur non vide par code.
     var cLib = trouver('libelle produit'), cMarche = trouver('libelle groupe structure'), cFamille = trouver('libelle famille structure');

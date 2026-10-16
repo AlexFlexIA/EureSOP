@@ -1608,7 +1608,7 @@ test('saisie des TC : lecture par article et entité, vide différent de zéro, 
 });
 test('saisie des TC : colonne de l\'année introuvable ou colonnes manquantes', () => {
   const env = envTC();
-  env.classeurs[F_TC]._feuilles.DONNEES._data[0][6] = 'PREV 2026 en QTE';
+  env.classeurs[F_TC]._feuilles.DONNEES._data[0][6] = 'QTE saisie';
   assert.strictEqual(env.run("(function(){ try { PrevTC.lire(Auth.resolve()); } catch (e) { return e.code; } })()"), 'SOURCE_COLONNES');
   const env2 = envTC();
   env2.classeurs[F_TC]._feuilles.DONNEES._data[0][1] = 'Autre';
@@ -1652,7 +1652,7 @@ test('saisie des TC : un pourcentage et une substitution s\'appliquent à la qua
 });
 test('saisie des TC : une source illisible n\'empêche pas le calcul et le dit', () => {
   const env = envTC();
-  env.classeurs[F_TC]._feuilles.DONNEES._data[0][6] = 'PREV 2026 en QTE';
+  env.classeurs[F_TC]._feuilles.DONNEES._data[0][6] = 'QTE saisie';
   const r = env.run("apiCalculerStatistique({}, 'op0')");
   assert.strictEqual(r.ok, true);
   assert.ok(r.data.resultat.avertissements.some((a) => /Prévisions des TC/.test(a)));
@@ -1699,7 +1699,7 @@ test('saisie des TC : le tableau de bord signale les écarts avec la statistique
 });
 test('saisie des TC : une source illisible donne une alerte et pas une erreur du tableau de bord', () => {
   const env = envTC();
-  env.classeurs[F_TC]._feuilles.DONNEES._data[0][6] = 'PREV 2026 en QTE';
+  env.classeurs[F_TC]._feuilles.DONNEES._data[0][6] = 'QTE saisie';
   const r = appel(env, 'tableauDeBord');
   assert.strictEqual(r.ok, true);
   assert.ok(r.data.alertes.some((a) => a.titre === 'Prévisions des TC illisibles' && a.niveau === 'ERREUR'));
@@ -1768,7 +1768,7 @@ test('catalogue : vide sans source, ou si la source est illisible', () => {
   const env = envCad(); env.moi('admin@eureden.com');
   assert.deepStrictEqual(env.run('Catalogue.lire(Auth.resolve())'), {});
   const env2 = envTC();
-  env2.classeurs[F_TC]._feuilles.DONNEES._data[0][6] = 'PREV 2026 en QTE';
+  env2.classeurs[F_TC]._feuilles.DONNEES._data[0][6] = 'QTE saisie';
   assert.deepStrictEqual(env2.run('Catalogue.lire(Auth.resolve())'), {});
 });
 test('catalogue : tonnes seulement pour les articles en KG', () => {
@@ -2095,11 +2095,19 @@ test('contrôles : la source PREV_TC est listée, en OK ou avec les colonnes PRE
   assert.strictEqual(ok.niveau, 'OK');
   assert.ok(/PREV 2027 en QTE/.test(ok.detail));
   const env2 = envTC();
-  env2.classeurs[F_TC]._feuilles.DONNEES._data[0][6] = 'PREV 2026 en QTE';
+  env2.classeurs[F_TC]._feuilles.DONNEES._data[0][6] = 'QTE saisie';
   env2.nouvelleExecution();
   const ko = env2.run('Controles.run(Auth.resolve())').filter((x) => x.sujet === 'Source PREV_TC (EurePrev)')[0];
   assert.strictEqual(ko.niveau, 'ERREUR');
-  assert.ok(/PREV 2026 en QTE/.test(ko.detail) && /2027/.test(ko.detail));
+  assert.ok(/2027/.test(ko.detail) && /aucune/.test(ko.detail));
+});
+test('saisie des TC : la colonne « PREV 2026 en QTE » sert à saisir 2027 quand c\'est la seule colonne PREV', () => {
+  const env = envTC();
+  env.classeurs[F_TC]._feuilles.DONNEES._data[0][6] = 'PREV 2026 en QTE';
+  env.nouvelleExecution();
+  const lu = env.run('PrevTC.lire(Auth.resolve())');
+  assert.strictEqual(lu.colonne, 'PREV 2026 en QTE');
+  assert.strictEqual(lu.parArticle['COOP EUREDEN|1109939'].qte, 17000.5);
 });
 
 let echecs = 0;
