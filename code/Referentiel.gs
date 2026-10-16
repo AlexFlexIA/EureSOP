@@ -15,14 +15,14 @@ var Referentiel = (function () {
     var res = {};
     var ajouter = function (code, o, prioritaire) {
       if (!code) return;
-      var x = res[code] = res[code] || { code: code, entite: '', calendrier: '', departement: '', territoire: '', bassin: '' };
+      var x = res[code] = res[code] || { code: code, entite: '', calendrier: '', departement: '', territoire: '', bassin: '', plateforme: '' };
       Object.keys(o).forEach(function (k) { if (o[k] && (prioritaire || !x[k])) x[k] = o[k]; });
     };
     try {
       Params.table('TC').forEach(function (r) {
         if (txt(r.Actif) !== '' && !yes(r.Actif)) return;
         ajouter(codeTexte(r['Code technicien']), {
-          entite: txt(r.Entite), calendrier: txt(r.Calendrier), departement: norm(r['Departement TC']), territoire: norm(r['Territoire TC']), bassin: norm(r['Bassin TC'])
+          entite: txt(r.Entite), calendrier: txt(r.Calendrier), departement: norm(r['Departement TC']), territoire: norm(r['Territoire TC']), bassin: norm(r['Bassin TC']), plateforme: norm(r.Plateforme)
         }, true);
       });
     } catch (e) { if (!(e && e.code)) throw e; }
@@ -30,7 +30,7 @@ var Referentiel = (function () {
       var t = PrevTC.lire(acteur);
       if (t && t.tcInfos) Object.keys(t.tcInfos).forEach(function (code) {
         var i = t.tcInfos[code];
-        ajouter(code, { entite: i.entite, calendrier: i.calendrier, departement: norm(i.departement), territoire: norm(i.territoire), bassin: norm(i.bassin) }, false);
+        ajouter(code, { entite: i.entite, calendrier: i.calendrier, departement: norm(i.departement), territoire: norm(i.territoire), bassin: norm(i.bassin), plateforme: norm(i.plateforme) }, false);
       });
     } catch (e) { if (!(e && e.code)) throw e; }
     return res;
@@ -57,7 +57,7 @@ var Referentiel = (function () {
   function charger(acteur) {
     if (memo && memo.camp === txt(acteur.campagne['ID campagne'])) return memo.tc;
     var tc = tousLesTC(acteur), liste = plateformes();
-    Object.keys(tc).forEach(function (c) { tc[c].plateforme = plateformeDe(liste, tc[c]); });
+    Object.keys(tc).forEach(function (c) { if (!tc[c].plateforme) tc[c].plateforme = plateformeDe(liste, tc[c]); });
     memo = { camp: txt(acteur.campagne['ID campagne']), tc: tc };
     return tc;
   }

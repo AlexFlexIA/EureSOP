@@ -2076,6 +2076,19 @@ test('référentiel TC : un RT voit l\'historique des TC de son territoire, et l
   assert.strictEqual(ref['102441'].plateforme, 'PF GLOMEL');
   assert.strictEqual(ref['199405'].plateforme, '');
 });
+test('référentiel TC lu dans les vrais en-têtes EurePrev (département, territoire, bassin de vie, calendrier, plateforme)', () => {
+  const env = envCad(); env.moi('admin@eureden.com');
+  env.ajouterClasseur(F_TC, { DONNEES: [['N° TC', 'Clé unique', 'ID PAC', 'TYPE CALENDRIER', 'Code technicien Appro/DTD', 'Code produit long Triskalia', '_Canal de distribution', 'Type du technicien Appro/DTD', 'Nom du département. du TC Appro/DTD', 'Nom du territoire du TC Appro/DTD', 'Libellé bassin de vie du TC Appro/DTD', 'Libellé groupe structure Triskalia', 'PREV 2027 en QTE', 'Plateforme', 'Saisie pour prévisions Coop (Oui ou Non)'],
+    [1, '1764245159307', 1, 'N', 159307, 1764245, 'NEGOCE ONA', 'TC', 'NEGOCE BRETAGNE', 'BOURDOIS', 'ROSTRENEN', 'FERTI FOLIAIRES', 10, 'GLOMEL', 'OUI']] });
+  env.semer('PARAM_FICHIER_TEST_00001', 'SOURCES', [{ 'ID source': 'TC', Nature: 'PREV_TC', 'ID fichier': F_TC, Onglet: 'DONNEES', 'Actif import': 'OUI' }]);
+  env.nouvelleExecution();
+  const ref = env.run('Referentiel.charger(Auth.resolve())')['159307'];
+  assert.strictEqual(ref.territoire, 'BOURDOIS');
+  assert.strictEqual(ref.bassin, 'ROSTRENEN');
+  assert.strictEqual(ref.departement, 'NEGOCE BRETAGNE');
+  assert.strictEqual(ref.calendrier, 'N');
+  assert.strictEqual(ref.plateforme, 'GLOMEL');
+});
 
 let echecs = 0;
 tests.forEach(({ nom, fn }) => {
