@@ -2089,6 +2089,18 @@ test('référentiel TC lu dans les vrais en-têtes EurePrev (département, terri
   assert.strictEqual(ref.calendrier, 'N');
   assert.strictEqual(ref.plateforme, 'GLOMEL');
 });
+test('contrôles : la source PREV_TC est listée, en OK ou avec les colonnes PREV trouvées', () => {
+  const env = envTC();
+  const ok = env.run('Controles.run(Auth.resolve())').filter((x) => x.sujet === 'Source PREV_TC (EurePrev)')[0];
+  assert.strictEqual(ok.niveau, 'OK');
+  assert.ok(/PREV 2027 en QTE/.test(ok.detail));
+  const env2 = envTC();
+  env2.classeurs[F_TC]._feuilles.DONNEES._data[0][6] = 'PREV 2026 en QTE';
+  env2.nouvelleExecution();
+  const ko = env2.run('Controles.run(Auth.resolve())').filter((x) => x.sujet === 'Source PREV_TC (EurePrev)')[0];
+  assert.strictEqual(ko.niveau, 'ERREUR');
+  assert.ok(/PREV 2026 en QTE/.test(ko.detail) && /2027/.test(ko.detail));
+});
 
 let echecs = 0;
 tests.forEach(({ nom, fn }) => {

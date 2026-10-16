@@ -70,7 +70,21 @@ var Controles = (function () {
     } catch (e) {
       autres = [{ niveau: 'ERREUR', sujet: 'Sources', detail: e && e.message ? e.message : 'Lecture impossible.' }];
     }
-    return res.concat(Histo.verifier(idCampagne), autres);
+    var tcInfos = [];
+    try {
+      var lu = PrevTC.lire(acteur);
+      if (lu) {
+        var ref = Object.keys(Referentiel.charger(acteur)).map(function (c) { return Referentiel.charger(acteur)[c]; });
+        var rattaches = ref.filter(function (x) { return x.territoire || x.bassin; }).length;
+        tcInfos.push({ niveau: 'OK', sujet: 'Source PREV_TC (EurePrev)', detail: lu.couverture.lignes + ' ligne(s) lues, colonne « ' + lu.colonne + ' » ; ' + lu.couverture.renseignees + ' saisie(s) sur ' + lu.couverture.saisissables + ' ; ' + ref.length + ' TC dont ' + rattaches + ' rattachés à un territoire ou un bassin.' });
+      } else {
+        tcInfos.push({ niveau: 'INFO', sujet: 'Source PREV_TC (EurePrev)', detail: 'Aucune ligne active de nature PREV_TC pour cette campagne dans SOURCES (ID fichier, Onglet DONNEES, Actif import = OUI).' });
+      }
+    } catch (e) {
+      if (!(e && e.code)) throw e;
+      tcInfos.push({ niveau: 'ERREUR', sujet: 'Source PREV_TC (EurePrev)', detail: e.message });
+    }
+    return res.concat(Histo.verifier(idCampagne), autres, tcInfos);
   }
 
   return { run: run };
